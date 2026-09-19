@@ -22,7 +22,7 @@
 - [x] Compare GNN performance against XGBoost.
 
 ## Phase 5: XAI & Triton Export
-- [ ] Integrate PyG Explainer.
-- [ ] Generate human-readable explanation masks for the dashboard.
-- [ ] Convert the final GNN model to ONNX format.
-- [ ] Configure Triton Inference Server model repository.
+- [x] Integrate PyG Explainer.
+- [x] Generate human-readable explanation masks for the dashboard.
+- [x] Convert the final GNN model to ONNX format.
+- [x] Configure Triton Inference Server model repository.

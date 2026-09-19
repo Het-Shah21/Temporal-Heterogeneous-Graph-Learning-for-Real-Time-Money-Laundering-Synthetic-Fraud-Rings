@@ -117,3 +117,34 @@ odes_*.csv and edges_*.csv generated from System 1.
 ### 3. Output
 - gnn_model.pth: The trained PyTorch model weights.
 - gnn_metrics.json: The final evaluation metrics (Precision, Recall, ROC-AUC) to compare against our System 2 baseline.
+
+## System 4: Explainability (XAI) & Triton Deployment Pipeline
+*(Phase 5)*
+
+**Objective:** A fraud score is useless for compliance without an auditable reason. This system computes the exact subgraph elements that triggered a high fraud probability. Furthermore, it freezes and exports the model into an optimized format suitable for sub-15ms real-time inference.
+
+### 1. Input
+- **Trained Model:** gnn_model.pth from System 3.
+- **Inference Graph:** A specific k-hop PyG HeteroData subgraph surrounding a live transaction.
+
+### 2. Processing (The Logic)
+**Step 4.1: XAI (Explainability Engine)**
+- Integrate PyTorch Geometric's Explainer module.
+- We will utilize CaptumExplainer (Integrated Gradients / Shapley Value approximation) to evaluate the model's prediction.
+- *Logic:* The explainer will output an edge_mask (a weight from 0 to 1 for every edge in the subgraph) and a 
+ode_mask. 
+- We will filter this mask to extract the Top 3 highest-weighted edges (e.g., showing that the transaction was flagged specifically because of a shared Device edge).
+
+**Step 4.2: ONNX Model Conversion (Dynamic Axes)**
+- NVIDIA Triton Inference Server requires highly optimized models. PyTorch's default .pth is too slow for <15ms execution.
+- We will trace the PyTorch GNN and export it to the ONNX (.onnx) format.
+- *Crucial Logic:* Graph sizes (nodes/edges) change with every transaction. We must explicitly define **Dynamic Axes** during the ONNX export so Triton knows the tensor dimensions will fluctuate in real-time.
+
+**Step 4.3: Triton Config Generation**
+- Generate the strict config.pbtxt required by Triton.
+- Map the ONNX input names to Triton inputs, specifying TYPE_FP32 and TYPE_INT64 with dynamic dimensions [-1, -1].
+
+### 3. Output
+- explainer.py: A module returning a structured JSON of human-readable fraud reasons.
+- model.onnx: The ultra-fast, frozen compute graph.
+- config.pbtxt: The Triton deployment configuration.

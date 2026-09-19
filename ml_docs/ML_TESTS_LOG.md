@@ -79,3 +79,21 @@ Initial tensor concatenations in Edge Classification (`src_emb + dst_emb + edge_
 
 **5. Resolution & Final Solution**
 Dynamically coded `self.lin1` in `gnn.py` to expect exactly `hidden_channels * 2 + 1` (accounting for the scalar transaction amount).
+
+### System 4: Explainability (XAI) & Triton Export
+
+**1. What was Tested?**
+The `FraudExplainer` initialization (Captum/Integrated Gradients) and the `TritonExporter` (Dynamic ONNX tracing & Config Generation).
+
+**2. Test Methodology & Execution**
+- Wrote `test_xai_export.py`.
+- Validated that the `config.pbtxt` is dynamically generated strictly matching Triton's required JSON-like Protobuf syntax.
+
+**3. Verdict**
+PASS
+
+**4. Issues / Loopholes Found**
+ONNX export of PyTorch Geographic's `HeteroData` dictionary natively fails in standard `torch.onnx.export` due to lack of dictionary support in older ONNX versions. 
+
+**5. Resolution & Final Solution**
+Added specific logic to mandate explicit defining of Dynamic Axes (`dynamic_axes={"x_dict": {0: "num_nodes"}}`) and designed the exporter to flatten the dictionaries into tuples before tracing.

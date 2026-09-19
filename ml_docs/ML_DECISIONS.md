@@ -26,3 +26,10 @@
 - **Why:** Fraud is an event (a transaction) occurring between two accounts at a specific time. If we classify nodes, we permanently label an account as "fraudulent", missing the temporal nuance that legitimate accounts can be momentarily hijacked (mule accounts). Classifying the edge accurately pinpoints the exact illicit event.
 - **Where:** `ml/models/gnn.py`
 - **When:** Week 2, Phase 4 (GNN Architecture).
+
+### Decision 005: Triton ONNX over TorchServe
+
+- **What:** Decided to export the model exclusively to ONNX format using Dynamic Axes for serving on NVIDIA Triton Inference Server, rather than deploying natively with FastAPI + PyTorch or TorchServe.
+- **Why:** The strict <15ms latency target cannot be met by standard Python-GIL bound PyTorch inference under heavy load. Triton provides native C++ TensorRT optimization and dynamic batching.
+- **Where:** `ml/export/triton_exporter.py`
+- **When:** Week 3, Phase 5 (XAI & Deployment Prep).

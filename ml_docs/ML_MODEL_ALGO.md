@@ -76,3 +76,25 @@ To create the core AI brain capable of outperforming the baseline by understandi
 **6. What was exactly implemented**
 - 2 layers of `HeteroConv` using `SAGEConv` under the hood.
 - Concatenated sender, receiver, and edge features passed through a 2-layer MLP for edge probability classification.
+
+### Algorithm: Integrated Gradients (Captum Shapley Approximation)
+
+**1. Mathematical Explanation**
+Integrated Gradients calculates the path integral of the gradients along the straightline path from a baseline (zero tensor) to the input graph.
+`IG_i(x) = (x_i - x'_i) \int_{0}^{1} rac{\partial F(x' + lpha(x - x'))}{\partial x_i} dlpha`
+This mathematically satisfies two axiomatic properties of Shapley values: Sensitivity (if two graphs differ in one edge and have different predictions, that edge gets a non-zero attribution) and Implementation Invariance.
+
+**2. Where it was used**
+`ml/xai/explainer.py`
+
+**3. Why it was chosen**
+Calculating exact Shapley values on graph topologies is NP-Hard. Integrated Gradients provides a highly accurate, mathematically provable approximation that runs fast enough to serve to the dashboard without blocking the main event loop.
+
+**4. When it was used in the project timeline**
+Week 3, Phase 5.
+
+**5. What we tried to achieve**
+To provide auditable reasons for compliance flags (e.g., "Transaction flagged due to shared IP address").
+
+**6. What was exactly implemented**
+Integrated `torch_geometric.explain.Explainer` with `CaptumExplainer('IntegratedGradients')` targeting Edge masks on binary classification.
