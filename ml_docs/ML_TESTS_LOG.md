@@ -135,3 +135,22 @@ NEEDS OPTIMIZATION
 **5. Resolution & Final Solution**
 - Created `get_criterion(data)` inside `gnn.py` to dynamically calculate `scale_pos_weight` exactly like the XGBoost script.
 - Wrote `evaluate_model` inside `gnn.py` leveraging `sklearn.metrics` for an apples-to-apples performance comparison.
+
+### Codebase Audit Phase 3: The Operational Pipeline
+
+**1. What was Tested?**
+The overall structural sequence of the repository to determine if a new developer or CI/CD pipeline could successfully train and deploy the model.
+
+**2. Test Methodology & Execution**
+- Traced the execution flow from data downloading to ONNX export.
+
+**3. Verdict**
+NEEDS OPTIMIZATION (Operational Failure)
+
+**4. Issues / Loopholes Found**
+- **Flaw 5:** Missing Pipeline Orchestrator. There was no single execution script. Training required manually running 6 disjointed python files in exact order.
+- **Flaw 6:** Unsaved Model Weights. The GNN architecture was defined, but `torch.save()` was never actually called, meaning the backend API had no `.pth` file to load.
+
+**5. Resolution & Final Solution**
+- Authored `ml/train_pipeline.py`. This master script handles Dataset Loading -> Graph Building -> Model Initialization -> Training (100 Epochs) -> Checkpointing -> Final Evaluation -> ONNX Triton Export.
+- Implemented `torch.save(model.state_dict())` during the multi-epoch validation loop to guarantee the backend team receives the mathematically optimal model weights.

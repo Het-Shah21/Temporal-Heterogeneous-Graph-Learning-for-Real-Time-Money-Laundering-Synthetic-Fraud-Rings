@@ -47,3 +47,10 @@
 - **Why:** Fraud constitutes <1% of the total edges. Without a proportional mathematical penalty for missing a fraudulent transaction, the GNN will suffer from the Accuracy Paradox (predicting 0 for everything and appearing 99% accurate while being completely useless for fraud detection).
 - **Where:** `ml/models/gnn.py`
 - **When:** Week 3, Post-Pipeline Audit 2.
+
+### Decision 008: Automated ML Pipeline Orchestration
+
+- **What:** Decided to write a monolithic `train_pipeline.py` script that orchestrates the entire ML lifecycle from raw data to Triton ONNX export in a single command.
+- **Why:** To eliminate manual operational errors, enable future CI/CD pipeline automation (e.g., Jenkins/GitHub Actions), and guarantee the backend team always receives a synchronized `gnn_model.pth` and `model.onnx`.
+- **Where:** `ml/train_pipeline.py`
+- **When:** Week 3, Post-Pipeline Audit 3.
