@@ -40,3 +40,10 @@
 - **Why:** To satisfy the strict <15ms latency constraint and prevent memory overflow in NVIDIA Triton and the Captum Explainer.
 - **Where:** ml/preprocessing/subgraph_extractor.py
 - **When:** Week 3, Post-Pipeline Audit.
+
+### Decision 007: GNN Class Imbalance Optimization
+
+- **What:** Decided to dynamically apply `pos_weight` to the `BCEWithLogitsLoss` criterion inside the PyTorch GNN.
+- **Why:** Fraud constitutes <1% of the total edges. Without a proportional mathematical penalty for missing a fraudulent transaction, the GNN will suffer from the Accuracy Paradox (predicting 0 for everything and appearing 99% accurate while being completely useless for fraud detection).
+- **Where:** `ml/models/gnn.py`
+- **When:** Week 3, Post-Pipeline Audit 2.

@@ -116,3 +116,22 @@ NEEDS OPTIMIZATION
 **5. Resolution & Final Solution**
 - Injected 	ime_delta into eature_engineering.py and modified graph_builder.py/gnn.py to accept 2D edge attributes [amount, time_delta].
 - Created ml/preprocessing/subgraph_extractor.py utilizing PyG's NeighborLoader to instantly slice localized subgraphs for ultra-fast, memory-safe Triton inference.
+
+### Codebase Audit Phase 2: Core GNN Mathematics
+
+**1. What was Tested?**
+The PyTorch GNN Training and Evaluation mechanics.
+
+**2. Test Methodology & Execution**
+- Scanned `gnn.py` to verify mathematical alignment with the XGBoost baseline, specifically checking Loss metrics and evaluation functions.
+
+**3. Verdict**
+NEEDS OPTIMIZATION
+
+**4. Issues / Loopholes Found**
+- **Flaw 3:** Missing Class Imbalance Handling. The GNN used a standard `BCEWithLogitsLoss()` which would cause it to overfit to the 99% legitimate majority class and ignore the <1% fraud minority class.
+- **Flaw 4:** Missing Evaluation Pipeline. There was no function to extract ROC-AUC and F1-Scores for the GNN to mathematically prove it outperforms XGBoost.
+
+**5. Resolution & Final Solution**
+- Created `get_criterion(data)` inside `gnn.py` to dynamically calculate `scale_pos_weight` exactly like the XGBoost script.
+- Wrote `evaluate_model` inside `gnn.py` leveraging `sklearn.metrics` for an apples-to-apples performance comparison.

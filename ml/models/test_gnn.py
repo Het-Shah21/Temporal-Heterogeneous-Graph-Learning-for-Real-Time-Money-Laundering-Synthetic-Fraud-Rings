@@ -7,7 +7,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 try:
     from torch_geometric.data import HeteroData
-    from models.gnn import HeteroFraudGNN, train_epoch
+    from models.gnn import HeteroFraudGNN, train_epoch, get_criterion, evaluate_model
     HAS_PYG = True
 except ImportError:
     HAS_PYG = False
@@ -47,13 +47,19 @@ class TestGNN(unittest.TestCase):
         self.assertEqual(out.shape, (4,), "Output should match the number of 'sends' edges (4).")
         self.assertTrue(torch.is_tensor(out))
         
-        # 4. Test Train Epoch
+        # 4. Test Train Epoch & get_criterion
         optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-        criterion = torch.nn.BCEWithLogitsLoss()
+        criterion = get_criterion(data)
         
         initial_loss = train_epoch(model, optimizer, data, criterion)
         self.assertIsInstance(initial_loss, float)
         self.assertGreater(initial_loss, 0.0)
+        
+        # 5. Test Evaluate Loop
+        data['account', 'sends', 'account'].test_mask = torch.tensor([False, False, True, True])
+        auc, f1 = evaluate_model(model, data, mask_name='test_mask')
+        self.assertIsInstance(auc, float)
+        self.assertIsInstance(f1, float)
 
 if __name__ == "__main__":
     unittest.main()
