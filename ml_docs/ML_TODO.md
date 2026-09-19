@@ -11,9 +11,9 @@
 - [ ] Create train/val/test splits based on temporal ordering (Time-based split).
 
 ## Phase 3: Baseline Modeling
-- [ ] Train XGBoost model on tabular features.
-- [ ] Generate classification report and ROC-AUC curve.
-- [ ] Document baseline results.
+- [x] Train XGBoost model on tabular features.
+- [x] Generate classification report and ROC-AUC curve.
+- [x] Document baseline results.
 
 ## Phase 4: GNN Architecture Development
 - [ ] Implement HeteroConv neural network in PyTorch.

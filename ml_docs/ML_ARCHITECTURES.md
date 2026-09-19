@@ -44,3 +44,42 @@ odes_device.csv,
 odes_ip.csv
 - edges_transaction.csv, edges_uses.csv, edges_login.csv
 - These files are structured perfectly to be read instantly into PyTorch Geometric HeteroData objects in System 2.
+
+## System 2: Feature Engineering & Baseline ML Pipeline (Edge Classification)
+*(Phase 1 & Phase 3)*
+
+**Objective:** Before building complex Graph Neural Networks, we must establish a traditional machine learning baseline (XGBoost) to prove the GNN's superiority. Since our labels (Is_Laundering) are tied to transactions (edges) rather than accounts (nodes), this system will engineer tabular features for every transaction and train a baseline classifier.
+
+### 1. Input
+- **Source:** Processed files from System 1 (edges_sends.csv).
+- **Data Shape:** [src, dst, amount, timestamp, label]
+
+### 2. Processing (The Logic)
+**Step 2.1: Feature Engineering (Tabularizing the Graph)**
+Traditional ML cannot understand graph topology naturally, so we must manually compute network statistics and attach them to each transaction.
+For every transaction (edge) from Account A to Account B, calculate:
+- *Transaction Features:* mount, hour_of_day.
+- *Sender (Account A) Features:* out_degree (total transactions sent so far), 	otal_amount_sent (cumulative amount sent so far).
+- *Receiver (Account B) Features:* in_degree (total transactions received so far), 	otal_amount_received.
+- *Velocity Features:* 	ime_since_last_txn_for_sender.
+
+**Step 2.2: Temporal Data Splitting**
+- Sort the dataset strictly by 	imestamp.
+- **Train Split:** First 70% of chronological transactions.
+- **Validation Split:** Next 15%.
+- **Test Split:** Final 15%.
+*(Random splitting is strictly prohibited as it causes future-data leakage in financial time-series).*
+
+**Step 2.3: Baseline Model Training**
+- Initialize an **XGBoost Classifier**.
+- Handle extreme class imbalance (fraud is usually < 1%) by setting scale_pos_weight equal to the ratio of negative to positive samples.
+- Train the model using the engineered tabular feature matrix.
+
+**Step 2.4: Evaluation**
+- Predict on the Test Split.
+- Calculate Precision, Recall, F1-Score, and ROC-AUC.
+
+### 3. Output
+- 	abular_features.csv (Saved dataset for fast reloading)
+- aseline_xgboost.json (The saved model weights)
+- aseline_metrics.txt (Log containing our benchmark metrics that the GNN must beat).

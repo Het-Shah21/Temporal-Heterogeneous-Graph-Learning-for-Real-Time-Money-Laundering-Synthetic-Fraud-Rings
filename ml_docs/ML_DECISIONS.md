@@ -13,3 +13,9 @@
 - **Why:** Real banking logs hide IPs/Devices for privacy. Pure synthetic data lacks structure. This hybrid approach guarantees we have a strictly heterogeneous graph schema without losing the realistic transactional flow of the IBM dataset.
 - **Where:** ml/data/hetero_builder.py
 - **When:** Week 1, Phase 1 (Data Acquisition).
+
+### Decision 003: Strict Temporal Splitting for Model Evaluation
+- **What:** Decided to use strict chronological slicing (first 70% of transactions for training, next 15% for validation, final 15% for testing) sorted by timestamp, explicitly bypassing standard random sampling.
+- **Why:** In financial datasets, random splitting causes future-data leakage (the model learns from future fraud behaviors to predict past behaviors). A strict temporal split perfectly mirrors the real-world production scenario.
+- **Where:** ml/models/baseline.py (and will apply to the upcoming GNN).
+- **When:** Week 2, Phase 3 (Baseline Modeling).
