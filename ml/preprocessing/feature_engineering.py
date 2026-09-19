@@ -23,7 +23,10 @@ class FeatureEngineer:
         # Hour of day (simulated using modulo 24 if timestamp is an integer sequence)
         df['hour_of_day'] = (df['timestamp'] // 3600) % 24
 
+        # Calculate transaction velocity / time delta
+        df['time_delta'] = df.groupby('src')['timestamp'].diff().fillna(0)
+
         print("Feature engineering complete.")
-        features = ['amount', 'hour_of_day', 's_out_degree', 's_total_sent', 'r_in_degree', 'r_total_received']
+        features = ['amount', 'hour_of_day', 's_out_degree', 's_total_sent', 'r_in_degree', 'r_total_received', 'time_delta']
         
         return df, features

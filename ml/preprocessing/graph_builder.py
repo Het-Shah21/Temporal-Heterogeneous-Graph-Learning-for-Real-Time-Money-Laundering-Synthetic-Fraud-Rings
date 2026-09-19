@@ -42,10 +42,13 @@ class HeteroDataBuilder:
 
         print("Constructing PyG Edge Tensors...")
         # Edge 1: Sends
+        # Calculate time delta for edge attribute (temporal feature)
+        sends_df['time_delta'] = sends_df.groupby('src')['timestamp'].diff().fillna(0)
+        
         src_acc = [acc_mapping[src] for src in sends_df['src']]
         dst_acc = [acc_mapping[dst] for dst in sends_df['dst']]
         data['account', 'sends', 'account'].edge_index = torch.tensor([src_acc, dst_acc], dtype=torch.long)
-        data['account', 'sends', 'account'].edge_attr = torch.tensor(sends_df['amount'].values, dtype=torch.float).view(-1, 1)
+        data['account', 'sends', 'account'].edge_attr = torch.tensor(sends_df[['amount', 'time_delta']].values, dtype=torch.float)
         data['account', 'sends', 'account'].y = torch.tensor(sends_df['label'].values, dtype=torch.float)
 
         # Edge 2: Uses Device

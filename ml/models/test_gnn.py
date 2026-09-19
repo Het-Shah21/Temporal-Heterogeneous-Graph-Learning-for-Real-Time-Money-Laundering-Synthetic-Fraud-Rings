@@ -26,7 +26,7 @@ class TestGNN(unittest.TestCase):
         # Edges
         # Account -> Sends -> Account
         data['account', 'sends', 'account'].edge_index = torch.tensor([[0, 1, 2, 3], [1, 2, 3, 4]], dtype=torch.long)
-        data['account', 'sends', 'account'].edge_attr = torch.rand((4, 1))
+        data['account', 'sends', 'account'].edge_attr = torch.rand((4, 2))
         data['account', 'sends', 'account'].y = torch.tensor([0.0, 1.0, 0.0, 0.0])
         data['account', 'sends', 'account'].train_mask = torch.tensor([True, True, False, False])
         

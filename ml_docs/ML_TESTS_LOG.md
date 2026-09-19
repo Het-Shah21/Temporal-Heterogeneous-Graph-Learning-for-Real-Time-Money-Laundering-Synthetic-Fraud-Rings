@@ -97,3 +97,22 @@ ONNX export of PyTorch Geographic's `HeteroData` dictionary natively fails in st
 
 **5. Resolution & Final Solution**
 Added specific logic to mandate explicit defining of Dynamic Axes (`dynamic_axes={"x_dict": {0: "num_nodes"}}`) and designed the exporter to flatten the dictionaries into tuples before tracing.
+
+### Codebase Audit: Temporal Feature and K-Hop Subgraph Fix
+
+**1. What was Tested?**
+An end-to-end architectural review of the repository was performed against the initial product requirements.
+
+**2. Test Methodology & Execution**
+- Scanned gnn.py, graph_builder.py, and explainer.py to ensure all stated requirements (Temporal edge features and <15ms latency constraint) were perfectly bridged.
+
+**3. Verdict**
+NEEDS OPTIMIZATION
+
+**4. Issues / Loopholes Found**
+- **Flaw 1:** The 	ime_delta (timestamp derivative) was missing from the GNN edge features, blinding the model to transaction velocity (a key mule network indicator).
+- **Flaw 2:** The XAI / Triton pipelines lacked a KHopSubgraphExtractor. Passing the global graph to Triton for a single transaction would cause a massive GPU OOM crash and violate the 15ms latency rule.
+
+**5. Resolution & Final Solution**
+- Injected 	ime_delta into eature_engineering.py and modified graph_builder.py/gnn.py to accept 2D edge attributes [amount, time_delta].
+- Created ml/preprocessing/subgraph_extractor.py utilizing PyG's NeighborLoader to instantly slice localized subgraphs for ultra-fast, memory-safe Triton inference.

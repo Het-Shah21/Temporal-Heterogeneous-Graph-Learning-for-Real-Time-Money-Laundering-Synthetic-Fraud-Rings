@@ -27,8 +27,8 @@ class HeteroFraudGNN(torch.nn.Module):
 
         # Edge Classification MLP
         # Input: concat(src_account_emb, dst_account_emb, edge_features)
-        # Shapes: hidden_channels + hidden_channels + 1 (amount)
-        self.lin1 = Linear(hidden_channels * 2 + 1, hidden_channels)
+        # Shapes: hidden_channels + hidden_channels + 2 (amount, time_delta)
+        self.lin1 = Linear(hidden_channels * 2 + 2, hidden_channels)
         self.lin2 = Linear(hidden_channels, out_channels)
 
     def forward(self, x_dict, edge_index_dict, edge_attr_dict):

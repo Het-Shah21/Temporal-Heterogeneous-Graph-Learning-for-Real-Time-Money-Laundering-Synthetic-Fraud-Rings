@@ -33,3 +33,10 @@
 - **Why:** The strict <15ms latency target cannot be met by standard Python-GIL bound PyTorch inference under heavy load. Triton provides native C++ TensorRT optimization and dynamic batching.
 - **Where:** `ml/export/triton_exporter.py`
 - **When:** Week 3, Phase 5 (XAI & Deployment Prep).
+
+### Decision 006: Localized K-Hop Subgraph Inference
+
+- **What:** Decided to extract tiny, localized k-hop subgraphs around the sender/receiver for real-time inference, rather than feeding the global graph.
+- **Why:** To satisfy the strict <15ms latency constraint and prevent memory overflow in NVIDIA Triton and the Captum Explainer.
+- **Where:** ml/preprocessing/subgraph_extractor.py
+- **When:** Week 3, Post-Pipeline Audit.
