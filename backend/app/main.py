@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from backend.app.routes.transactions import router as transaction_router
 
 app = FastAPI(
     title="Fraud Detection API",
@@ -6,7 +7,7 @@ app = FastAPI(
     version="0.1.0"
 )
 
-
+app.include_router(transaction_router)
 @app.get("/")
 def root():
     return {
