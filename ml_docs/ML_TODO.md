@@ -1,0 +1,28 @@
+# ML Implementation Phases & Tasks
+
+## Phase 1: Data Acquisition & Preprocessing
+- [ ] Research and download IBM AML Dataset (or equivalent PaySim).
+- [x] Write data parsers to convert dataset CSVs into our standard Node/Edge schema.
+- [ ] Build tabular feature extractors (velocity, volume, degree).
+
+## Phase 2: Graph Construction
+- [ ] Implement PyG Dataset or HeteroData constructor.
+- [ ] Validate heterogeneous schema (User, Account, Device, IP).
+- [ ] Create train/val/test splits based on temporal ordering (Time-based split).
+
+## Phase 3: Baseline Modeling
+- [ ] Train XGBoost model on tabular features.
+- [ ] Generate classification report and ROC-AUC curve.
+- [ ] Document baseline results.
+
+## Phase 4: GNN Architecture Development
+- [ ] Implement HeteroConv neural network in PyTorch.
+- [ ] Write the training loop (optimizer, loss function, evaluation step).
+- [ ] Tune hyperparameters (learning rate, hidden dimensions).
+- [ ] Compare GNN performance against XGBoost.
+
+## Phase 5: XAI & Triton Export
+- [ ] Integrate PyG Explainer.
+- [ ] Generate human-readable explanation masks for the dashboard.
+- [ ] Convert the final GNN model to ONNX format.
+- [ ] Configure Triton Inference Server model repository.
