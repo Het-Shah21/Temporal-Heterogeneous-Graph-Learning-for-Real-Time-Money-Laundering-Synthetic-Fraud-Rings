@@ -1,0 +1,38 @@
+services:
+
+  redpanda:
+    image: redpandadata/redpanda:latest
+    container_name: fraud-redpanda
+    command:
+      - redpanda
+      - start
+      - --overprovisioned
+      - --smp
+      - "1"
+      - --memory
+      - 1G
+      - --reserve-memory
+      - 0M
+      - --check=false
+      - --node-id
+      - "0"
+      - --kafka-addr
+      - PLAINTEXT://0.0.0.0:9092
+      - --advertise-kafka-addr
+      - PLAINTEXT://localhost:9092
+    ports:
+      - "9092:9092"
+      - "9644:9644"
+
+  memgraph:
+    image: memgraph/memgraph:latest
+    container_name: fraud-memgraph
+    ports:
+      - "7687:7687"
+      - "7444:7444"
+
+  redis:
+    image: redis:7-alpine
+    container_name: fraud-redis
+    ports:
+      - "6379:6379"
