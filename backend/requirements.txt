@@ -3,3 +3,4 @@ uvicorn[standard]
 redis
 neo4j
 python-dotenv
+kafka-python
