@@ -83,3 +83,37 @@ For every transaction (edge) from Account A to Account B, calculate:
 - 	abular_features.csv (Saved dataset for fast reloading)
 - aseline_xgboost.json (The saved model weights)
 - aseline_metrics.txt (Log containing our benchmark metrics that the GNN must beat).
+
+## System 3: Heterogeneous Graph Neural Network (The Core AI Brain)
+*(Phase 4)*
+
+**Objective:** To replace the traditional XGBoost baseline with an advanced Graph Neural Network capable of natively understanding the multi-entity topology (Accounts, Devices, IPs) of fraud rings. This system predicts fraud at the transaction level (Edge Classification).
+
+### 1. Input
+- **Graph Structure:** 
+odes_*.csv and edges_*.csv generated from System 1.
+- **Node Features:** Tabular features (like rolling degrees and volumes) mapped to PyTorch tensors.
+
+### 2. Processing (The Logic)
+**Step 3.1: PyG HeteroData Construction**
+- Map the CSV data into PyTorch Geometric's native HeteroData structure.
+- Define Node Types: ['account', 'device', 'ip']
+- Define Edge Types: [('account', 'sends', 'account'), ('account', 'uses', 'device'), ('account', 'logs_in', 'ip')]
+
+**Step 3.2: The GNN Architecture (HGT - Heterogeneous Graph Transformer)**
+- Initialize a Multi-layer HGTConv (or HeteroConv wrapped SAGEConv) neural network.
+- *Message Passing:* The GNN routes information not just between accounts, but pulls risk signals from connected Devices and IPs. (e.g., If IP_X is connected to 5 fraudulent accounts, that risk flows into Account A during the message passing phase).
+
+**Step 3.3: Edge Classification Head (The Predictor)**
+- Since fraud is defined by a transaction (an edge), the GNN outputs updated node embeddings for Account A (Sender) and Account B (Receiver).
+- We extract the final embedding of A and B, concatenate them with the transaction mount and 	ime_delta, and pass this combined vector through an MLP (Multi-Layer Perceptron) to output a final probability score (0.0 to 1.0).
+
+**Step 3.4: Scalable Batching & Training**
+- Graphs are massive. We cannot load millions of nodes into GPU memory at once.
+- We will use PyG's NeighborLoader to sample localized *k-hop subgraphs* for each transaction in the batch.
+- Loss Function: Binary Cross Entropy with Logits (BCEWithLogitsLoss).
+- Optimizer: AdamW.
+
+### 3. Output
+- gnn_model.pth: The trained PyTorch model weights.
+- gnn_metrics.json: The final evaluation metrics (Precision, Recall, ROC-AUC) to compare against our System 2 baseline.

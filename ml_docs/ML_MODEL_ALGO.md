@@ -50,3 +50,29 @@ To establish benchmark metrics (Precision, Recall, F1, ROC-AUC) so we can mathem
 **6. What was exactly implemented**
 Implemented using xgboost.XGBClassifier. Set 
 _estimators=100, learning_rate=0.1, max_depth=5, and dynamically calculated scale_pos_weight based on the exact ratio of legitimate to fraudulent transactions in the training split.
+
+### Algorithm: Heterogeneous Graph Neural Network (HeteroConv + GraphSAGE)
+
+**1. Mathematical Explanation**
+We utilize GraphSAGE (`SAGEConv`) wrapped in PyG's `HeteroConv` to handle multi-relation graphs. 
+The mathematical update rule for a node `v` in a specific relation `r` (e.g., Account -> Uses -> Device) is:
+`h_{v, r}^{(k)} = W_1 \cdot h_v^{(k-1)} + W_2 \cdot AGG({h_u^{(k-1)} : u \in N_r(v)})`
+Where `AGG` is the mean aggregation function. `HeteroConv` then reduces these relation-specific messages:
+`h_v^{(k)} = \sum_{r} h_{v, r}^{(k)}`
+This means the final embedding of an Account contains the aggregated features of the devices it uses, the IPs it logs in from, and the accounts it interacts with.
+
+**2. Where it was used**
+`ml/models/gnn.py`
+
+**3. Why it was chosen**
+Traditional ML (XGBoost) cannot inherently trace multi-hop topological structures. By using `HeteroConv`, we allow risk signals from a distant shared device to mathematically propagate into an account's embedding, which is critical for synthetic fraud rings.
+
+**4. When it was used in the project timeline**
+Week 2, Phase 4.
+
+**5. What we tried to achieve**
+To create the core AI brain capable of outperforming the baseline by understanding decentralized graph patterns natively.
+
+**6. What was exactly implemented**
+- 2 layers of `HeteroConv` using `SAGEConv` under the hood.
+- Concatenated sender, receiver, and edge features passed through a 2-layer MLP for edge probability classification.

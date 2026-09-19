@@ -19,3 +19,10 @@
 - **Why:** In financial datasets, random splitting causes future-data leakage (the model learns from future fraud behaviors to predict past behaviors). A strict temporal split perfectly mirrors the real-world production scenario.
 - **Where:** ml/models/baseline.py (and will apply to the upcoming GNN).
 - **When:** Week 2, Phase 3 (Baseline Modeling).
+
+### Decision 004: Edge Classification Formulation
+
+- **What:** Decided to formulate fraud detection as an Edge Classification problem rather than a Node Classification problem.
+- **Why:** Fraud is an event (a transaction) occurring between two accounts at a specific time. If we classify nodes, we permanently label an account as "fraudulent", missing the temporal nuance that legitimate accounts can be momentarily hijacked (mule accounts). Classifying the edge accurately pinpoints the exact illicit event.
+- **Where:** `ml/models/gnn.py`
+- **When:** Week 2, Phase 4 (GNN Architecture).

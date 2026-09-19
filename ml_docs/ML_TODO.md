@@ -16,10 +16,10 @@
 - [x] Document baseline results.
 
 ## Phase 4: GNN Architecture Development
-- [ ] Implement HeteroConv neural network in PyTorch.
-- [ ] Write the training loop (optimizer, loss function, evaluation step).
-- [ ] Tune hyperparameters (learning rate, hidden dimensions).
-- [ ] Compare GNN performance against XGBoost.
+- [x] Implement HeteroConv neural network in PyTorch.
+- [x] Write the training loop (optimizer, loss function, evaluation step).
+- [x] Tune hyperparameters (learning rate, hidden dimensions).
+- [x] Compare GNN performance against XGBoost.
 
 ## Phase 5: XAI & Triton Export
 - [ ] Integrate PyG Explainer.
