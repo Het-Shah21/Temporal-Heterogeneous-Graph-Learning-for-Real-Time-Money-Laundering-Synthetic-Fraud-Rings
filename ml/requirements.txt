@@ -1,0 +1,21 @@
+# -------------------------------------------------------------------
+# ML Pipeline - Enterprise Build Manifest
+# -------------------------------------------------------------------
+# Core AI & Math
+torch>=2.0.0
+torch_geometric>=2.3.0
+numpy>=1.22.0
+pandas>=1.4.0
+scikit-learn>=1.2.0
+
+# Baseline Model
+xgboost>=1.7.0
+
+# Explainable AI (XAI)
+captum>=0.6.0
+
+# Triton C++ Inference Client
+tritonclient[all]>=2.40.0
+
+# Utilities
+kaggle>=1.5.16

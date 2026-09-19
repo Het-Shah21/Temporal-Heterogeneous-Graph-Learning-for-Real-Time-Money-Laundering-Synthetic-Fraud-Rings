@@ -1,0 +1,28 @@
+# -------------------------------------------------------------------
+# ML Directory GitIgnore - STRICT LFS PROTECTION
+# -------------------------------------------------------------------
+
+# 1. Dataset & Processed Matrices (Gigabytes)
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# 2. Heavy Model Artifacts (Weights, Scalers, Redis JSON)
+models/artifacts/*
+!models/artifacts/.gitkeep
+
+# 3. Triton Export Binaries (Massive ONNX Files)
+export/triton_model_repository/*
+!export/triton_model_repository/.gitkeep
+
+# 4. Python Cache & Environments
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+venv/
+env/
+
+# 5. Local Jupyter Checkpoints
+.ipynb_checkpoints/

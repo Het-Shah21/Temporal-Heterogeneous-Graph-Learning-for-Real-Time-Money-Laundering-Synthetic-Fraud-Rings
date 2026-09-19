@@ -19,7 +19,7 @@ class TestGNN(unittest.TestCase):
         data = HeteroData()
         
         # 5 accounts, 2 devices, 2 ips
-        data['account'].x = torch.rand((5, 3))
+        data['account'].x = torch.rand((5, 4))
         data['device'].x = torch.rand((2, 1))
         data['ip'].x = torch.rand((2, 1))
         
