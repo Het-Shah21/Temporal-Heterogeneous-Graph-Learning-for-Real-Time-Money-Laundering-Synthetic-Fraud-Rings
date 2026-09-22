@@ -52,28 +52,33 @@ def consume_transactions():
     print("Transaction consumer started...")
 
     for message in consumer:
-        transaction = message.value
+        try:
+            transaction = message.value
 
-        print("Received transaction:")
-        print(transaction)
+            print("Received transaction:")
+            print(transaction)
 
-        save_transaction(transaction)
-        print("Transaction saved to Memgraph!")
+            save_transaction(transaction)
+            print("Transaction saved to Memgraph!")
 
-        save_transaction_to_redis(transaction)
-        print("Transaction saved to Redis!")    
+            save_transaction_to_redis(transaction)
+            print("Transaction saved to Redis!")
 
-        features = build_transaction_features(
-            transaction["transaction_id"],
-            transaction["sender"]
-        )
+            features = build_transaction_features(
+                transaction["transaction_id"],
+                transaction["sender"]
+            )
 
-        print("Extracted features:")
-        print(features)
+            print("Extracted features:")
+            print(features)
 
-        save_features_to_redis(
-        transaction["transaction_id"],
-        features
-        )
+            save_features_to_redis(
+                transaction["transaction_id"],
+                features
+            )
 
-        print("Features saved to Redis!")
+            print("Features saved to Redis!")
+
+        except Exception as error:
+            print(f"Error processing transaction: {error}")
+            print("Consumer is continuing...")
