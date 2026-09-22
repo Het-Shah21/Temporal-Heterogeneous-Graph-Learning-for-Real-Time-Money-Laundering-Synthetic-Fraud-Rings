@@ -16,7 +16,13 @@ def create_transaction(transaction: Transaction):
 
     transaction_data["timestamp"] = datetime.now(timezone.utc).isoformat()
 
-    publish_transaction(transaction_data)
+    success = publish_transaction(transaction_data)
+
+    if not success:
+        return {
+            "status": "error",
+            "message": "Failed to publish transaction to Redpanda"
+        }
 
     return {
         "status": "success",
