@@ -3,7 +3,9 @@ from datetime import datetime, timezone
 
 from backend.app.models import Transaction, TransactionFeatures
 from backend.app.services.redpanda_service import publish_transaction
-
+from backend.app.services.ml_service import get_ml_feature_vector
+from backend.app.services.prediction_service import predict_fraud
+from backend.app.services.alert_service import send_fraud_alert
 
 router = APIRouter(prefix="/transactions", tags=["Transactions"])
 
@@ -42,4 +44,45 @@ def get_transaction_features_api(transaction_id: str):
         "total_amount_sent": float(data["total_amount_sent"]),
         "unique_receiver_count": int(data["unique_receiver_count"]),
         "recent_transaction_count": int(data["recent_transaction_count"])
+    }
+
+@router.post("/{transaction_id}/predict")
+async def predict_transaction(transaction_id: str):
+    from backend.app.services.redis_service import redis_client
+
+    transaction_data = redis_client.hgetall(
+        f"transaction:{transaction_id}"
+    )
+
+    if not transaction_data:
+        return {
+            "status": "not_found",
+            "message": "Transaction not found"
+        }
+
+    sender_id = transaction_data["sender"]
+
+    features = get_ml_feature_vector(
+        transaction_id,
+        sender_id
+    )
+
+    if features is None:
+        return {
+            "status": "not_found",
+            "message": "Features not found"
+        }
+
+    prediction = predict_fraud(features)
+    if prediction["prediction"] == 1:
+        await send_fraud_alert(
+            transaction_id,
+            prediction["fraud_probability"]
+        )
+
+    return {
+        "status": "success",
+        "transaction_id": transaction_id,
+        "prediction": prediction["prediction"],
+        "fraud_probability": prediction["fraud_probability"]
     }
