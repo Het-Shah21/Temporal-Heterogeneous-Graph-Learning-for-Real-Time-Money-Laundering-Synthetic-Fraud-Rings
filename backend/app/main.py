@@ -19,6 +19,32 @@ def root():
 
 @app.get("/health")
 def health():
+    from backend.app.services.redis_service import check_redis
+    from backend.app.services.memgraph_service import check_memgraph
+
+    redis_status = False
+    memgraph_status = False
+
+    try:
+        redis_status = check_redis()
+    except Exception:
+        pass
+
+    try:
+        memgraph_status = check_memgraph() == 1
+    except Exception:
+        pass
+
+    overall_status = (
+        "healthy"
+        if redis_status and memgraph_status
+        else "degraded"
+    )
+
     return {
-        "status": "healthy"
+        "status": overall_status,
+        "services": {
+            "redis": redis_status,
+            "memgraph": memgraph_status
+        }
     }
