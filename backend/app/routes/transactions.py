@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from datetime import datetime, timezone
 
 from backend.app.models import Transaction, TransactionFeatures
@@ -19,10 +19,10 @@ def create_transaction(transaction: Transaction):
     success = publish_transaction(transaction_data)
 
     if not success:
-        return {
-            "status": "error",
-            "message": "Failed to publish transaction to Redpanda"
-        }
+        raise HTTPException(
+            status_code=503,
+            detail="Failed to publish transaction to Redpanda"
+        )
 
     return {
         "status": "success",
