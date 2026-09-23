@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from datetime import datetime, timezone
 
-from backend.app.models import Transaction, TransactionFeatures
+from backend.app.models import Transaction
 from backend.app.services.redpanda_service import publish_transaction
 from backend.app.services.ml_service import get_ml_feature_vector
 from backend.app.services.prediction_service import predict_fraud
@@ -61,10 +61,10 @@ async def predict_transaction(transaction_id: str):
     )
 
     if not transaction_data:
-        return {
-            "status": "not_found",
-            "message": "Transaction not found"
-        }
+        raise HTTPException(
+            status_code=404,
+            detail="Transaction not found"
+        )
 
     sender_id = transaction_data["sender"]
 
@@ -74,10 +74,10 @@ async def predict_transaction(transaction_id: str):
     )
 
     if features is None:
-        return {
-            "status": "not_found",
-            "message": "Features not found"
-        }
+        raise HTTPException(
+            status_code=404,
+            detail="Features not found"
+        )
 
     prediction = predict_fraud(features)
     if prediction["prediction"] == 1:
