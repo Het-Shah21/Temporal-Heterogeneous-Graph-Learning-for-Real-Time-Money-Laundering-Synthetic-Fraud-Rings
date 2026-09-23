@@ -76,7 +76,12 @@ def build_transaction_features(transaction_id, sender_id):
 
 
 def save_features_to_redis(transaction_id, features):
+    key = f"features:{transaction_id}"
+
     redis_client.hset(
-        f"features:{transaction_id}",
+        key,
         mapping=features
     )
+
+    # Keep temporary feature data for 1 hour
+    redis_client.expire(key, 3600)

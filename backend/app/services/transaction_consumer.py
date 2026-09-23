@@ -38,8 +38,10 @@ def save_transaction(transaction):
 def save_transaction_to_redis(transaction):
     transaction_id = transaction["transaction_id"]
 
+    key = f"transaction:{transaction_id}"
+
     redis_client.hset(
-        f"transaction:{transaction_id}",
+        key,
         mapping={
             "sender": transaction["sender"],
             "receiver": transaction["receiver"],
@@ -47,6 +49,9 @@ def save_transaction_to_redis(transaction):
             "timestamp": transaction["timestamp"]
         }
     )
+
+    # Keep temporary transaction data for 1 hour
+    redis_client.expire(key, 3600)
 
 def consume_transactions():
     print("Transaction consumer started...")
