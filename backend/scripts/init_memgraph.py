@@ -21,4 +21,4 @@ def init_memgraph():
 
 
 if __name__ == "__main__":
-    init_memgraph()
+    init_memgraph() 
