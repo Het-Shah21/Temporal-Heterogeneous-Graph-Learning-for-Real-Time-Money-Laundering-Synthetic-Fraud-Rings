@@ -4,14 +4,23 @@ from backend.app.services.memgraph_service import driver
 from backend.app.services.redis_service import redis_client
 from backend.app.services.feature_service import build_transaction_features
 from backend.app.services.feature_service import save_features_to_redis
+import os
+from dotenv import load_dotenv
 
+load_dotenv()
 
 consumer = KafkaConsumer(
     "transactions",
-    bootstrap_servers="localhost:9092",
+    bootstrap_servers=os.getenv(
+        "REDPANDA_BROKER",
+        "localhost:9092"
+    ),
     auto_offset_reset="earliest",
     enable_auto_commit=True,
-    group_id="fraud-backend",
+    group_id=os.getenv(
+        "REDPANDA_GROUP_ID",
+        "fraud-backend"
+    ),
     value_deserializer=lambda value: json.loads(value.decode("utf-8"))
 )
 
