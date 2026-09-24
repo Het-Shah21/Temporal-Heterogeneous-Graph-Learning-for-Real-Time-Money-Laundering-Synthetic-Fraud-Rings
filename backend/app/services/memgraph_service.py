@@ -10,7 +10,8 @@ MEMGRAPH_PASSWORD = os.getenv("MEMGRAPH_PASSWORD", "")
 
 driver = GraphDatabase.driver(
     MEMGRAPH_URI,
-    auth=(MEMGRAPH_USER, MEMGRAPH_PASSWORD)
+    auth=(MEMGRAPH_USER, MEMGRAPH_PASSWORD),
+    connection_timeout=5
 )
 
 
