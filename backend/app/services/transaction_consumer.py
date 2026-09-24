@@ -31,11 +31,12 @@ def save_transaction(transaction):
             """
             MERGE (sender:User {id: $sender})
             MERGE (receiver:User {id: $receiver})
-            CREATE (sender)-[:SENT {
-                transaction_id: $transaction_id,
-                amount: $amount,
-                timestamp: $timestamp
-            }]->(receiver)
+
+            MERGE (sender)-[r:SENT {transaction_id: $transaction_id}]->(receiver)
+
+            SET
+                r.amount = $amount,
+                r.timestamp = $timestamp
             """,
             sender=transaction["sender"],
             receiver=transaction["receiver"],
