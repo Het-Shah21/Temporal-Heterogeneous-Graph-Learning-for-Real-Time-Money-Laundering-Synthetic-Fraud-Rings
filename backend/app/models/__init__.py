@@ -1,11 +1,12 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Transaction(BaseModel):
-    transaction_id: str
-    sender: str
-    receiver: str
-    amount: float
+    transaction_id: str = Field(min_length=1)
+    sender: str = Field(min_length=1)
+    receiver: str = Field(min_length=1)
+    amount: float = Field(gt=0)
+
 
 class TransactionFeatures(BaseModel):
     amount: float
