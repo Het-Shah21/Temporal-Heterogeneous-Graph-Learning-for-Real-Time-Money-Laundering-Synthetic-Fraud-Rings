@@ -21,3 +21,9 @@ class TransactionResponse(BaseModel):
     status: str
     message: str
     transaction: Transaction
+
+class PredictionResponse(BaseModel):
+    status: str
+    transaction_id: str
+    prediction: int
+    fraud_probability: float

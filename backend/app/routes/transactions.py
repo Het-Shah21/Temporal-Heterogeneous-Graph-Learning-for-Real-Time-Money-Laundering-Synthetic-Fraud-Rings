@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from datetime import datetime, timezone
 
-from backend.app.models import Transaction, TransactionResponse
+from backend.app.models import Transaction, TransactionResponse, PredictionResponse
 from backend.app.services.redpanda_service import publish_transaction
 from backend.app.services.ml_service import get_ml_feature_vector
 from backend.app.services.prediction_service import predict_fraud
@@ -52,7 +52,10 @@ def get_transaction_features_api(transaction_id: str):
         "recent_transaction_count": int(data["recent_transaction_count"])
     }
 
-@router.post("/{transaction_id}/predict")
+@router.post(
+    "/{transaction_id}/predict",
+    response_model=PredictionResponse
+)
 async def predict_transaction(transaction_id: str):
     from backend.app.services.redis_service import redis_client
 
