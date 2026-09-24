@@ -16,3 +16,8 @@ class TransactionFeatures(BaseModel):
     total_amount_sent: float
     unique_receiver_count: int
     recent_transaction_count: int
+
+class TransactionResponse(BaseModel):
+    status: str
+    message: str
+    transaction: Transaction

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from datetime import datetime, timezone
 
-from backend.app.models import Transaction
+from backend.app.models import Transaction, TransactionResponse
 from backend.app.services.redpanda_service import publish_transaction
 from backend.app.services.ml_service import get_ml_feature_vector
 from backend.app.services.prediction_service import predict_fraud
@@ -10,7 +10,7 @@ from backend.app.services.alert_service import send_fraud_alert
 router = APIRouter(prefix="/transactions", tags=["Transactions"])
 
 
-@router.post("/")
+@router.post("/", response_model=TransactionResponse)
 def create_transaction(transaction: Transaction):
     transaction_data = transaction.model_dump()
 
