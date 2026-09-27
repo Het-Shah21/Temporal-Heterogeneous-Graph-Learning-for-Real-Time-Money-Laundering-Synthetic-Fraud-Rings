@@ -6,6 +6,12 @@ def download_ibm_aml():
     os.makedirs(raw_dir, exist_ok=True)
     print("Downloading IBM AML dataset via Kaggle API...")
     print("Ensure you have Kaggle API configured (~/.kaggle/kaggle.json).")
+    
+    existing_csvs = [f for f in os.listdir(raw_dir) if f.endswith('.csv')]
+    if len(existing_csvs) > 0:
+        print(f"Skipping download! Found {len(existing_csvs)} existing CSV files in {raw_dir}.")
+        return
+
     try:
         subprocess.run([
             'kaggle', 'datasets', 'download', '-d', 

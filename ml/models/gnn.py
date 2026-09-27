@@ -15,14 +15,14 @@ class HeteroFraudGNN(torch.nn.Module):
             
         self.conv1 = HeteroConv({
             ('account', 'sends', 'account'): SAGEConv((-1, -1), hidden_channels),
-            ('account', 'uses', 'device'): SAGEConv((-1, -1), hidden_channels, add_self_loops=False),
-            ('account', 'logs_in', 'ip'): SAGEConv((-1, -1), hidden_channels, add_self_loops=False),
+            ('account', 'uses', 'device'): SAGEConv((-1, -1), hidden_channels),
+            ('account', 'logs_in', 'ip'): SAGEConv((-1, -1), hidden_channels),
         }, aggr='sum')
         
         self.conv2 = HeteroConv({
             ('account', 'sends', 'account'): SAGEConv((-1, -1), hidden_channels),
-            ('account', 'uses', 'device'): SAGEConv((-1, -1), hidden_channels, add_self_loops=False),
-            ('account', 'logs_in', 'ip'): SAGEConv((-1, -1), hidden_channels, add_self_loops=False),
+            ('account', 'uses', 'device'): SAGEConv((-1, -1), hidden_channels),
+            ('account', 'logs_in', 'ip'): SAGEConv((-1, -1), hidden_channels),
         }, aggr='sum')
 
         self.lin1 = Linear(hidden_channels * 2 + 2, hidden_channels)
@@ -53,52 +53,47 @@ def get_criterion(data):
     weight = num_neg / num_pos if num_pos > 0 else 1.0
     return torch.nn.BCEWithLogitsLoss(pos_weight=torch.tensor([weight], dtype=torch.float))
 
-def train_epoch(model, optimizer, loader, criterion, device):
-    """HARDWARE LOGIC: Streams data through GPU in minibatches to prevent VRAM OOM crashes."""
+def train_epoch(model, optimizer, data, criterion, device):
+    """HARDWARE LOGIC: Full-batch training since we forced HI-Small_Trans.csv (<1GB VRAM)."""
     model.train()
-    total_loss = 0
-    batches = 0
     
-    for batch in loader:
-        batch = batch.to(device)
-        optimizer.zero_grad()
+    data = data.to(device)
+    optimizer.zero_grad()
+    
+    out = model(data.x_dict, data.edge_index_dict, data.edge_attr_dict)
+    
+    mask = data['account', 'sends', 'account'].train_mask
+    if mask.sum() > 0:
+        loss = criterion(out[mask], data['account', 'sends', 'account'].y[mask])
+        loss.backward()
+        optimizer.step()
+        return loss.item()
         
-        out = model(batch.x_dict, batch.edge_index_dict, batch.edge_attr_dict)
-        
-        mask = batch['account', 'sends', 'account'].train_mask
-        if mask.sum() > 0:
-            loss = criterion(out[mask], batch['account', 'sends', 'account'].y[mask])
-            loss.backward()
-            optimizer.step()
-            total_loss += loss.item()
-            batches += 1
-            
-    return total_loss / max(1, batches)
+    return 0.0
 
-def evaluate_model(model, loader, mask_name='test_mask', device='cpu'):
-    """Evaluates metrics block-by-block, maintaining flat memory usage."""
+def evaluate_model(model, data, mask_name='test_mask', device='cpu'):
+    """Evaluates metrics in full-batch mode."""
     model.eval()
     all_y_true = []
     all_y_proba = []
     all_y_pred = []
     
     with torch.no_grad():
-        for batch in loader:
-            batch = batch.to(device)
-            out = model(batch.x_dict, batch.edge_index_dict, batch.edge_attr_dict)
-            mask = batch['account', 'sends', 'account'][mask_name]
+        data = data.to(device)
+        out = model(data.x_dict, data.edge_index_dict, data.edge_attr_dict)
+        mask = data['account', 'sends', 'account'][mask_name]
+        
+        if mask.sum().item() > 0:
+            y_true = data['account', 'sends', 'account'].y[mask].cpu().numpy()
+            y_logits = out[mask].cpu().numpy()
             
-            if mask.sum().item() > 0:
-                y_true = batch['account', 'sends', 'account'].y[mask].cpu().numpy()
-                y_logits = out[mask].cpu().numpy()
-                
-                y_proba = 1.0 / (1.0 + np.exp(-y_logits))
-                y_pred = (y_proba > 0.5).astype(int)
-                
-                all_y_true.extend(y_true)
-                all_y_proba.extend(y_proba)
-                all_y_pred.extend(y_pred)
-                
+            y_proba = 1.0 / (1.0 + np.exp(-y_logits))
+            y_pred = (y_proba > 0.5).astype(int)
+            
+            all_y_true.extend(y_true)
+            all_y_proba.extend(y_proba)
+            all_y_pred.extend(y_pred)
+            
     if len(all_y_true) == 0:
         return 0.0, 0.0
         

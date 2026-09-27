@@ -65,6 +65,25 @@ def run_pipeline():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logger.info(f"[Hardware] Compute Device Selected: {device}")
 
+    # SYSTEM 1: Ensure Processed Data Exists
+    if not os.path.exists(proc_dir) or not os.listdir(proc_dir):
+        logger.warning("Processed data not found! Running System 1 (Data Builder)...")
+        from data.hetero_builder import HeteroGraphBuilder
+        raw_dir = os.path.join(base_dir, 'data', 'raw')
+        
+        csv_files = [f for f in os.listdir(raw_dir) if f.endswith('.csv')] if os.path.exists(raw_dir) else []
+        if not csv_files:
+            logger.error("Raw data not found! Please ensure download_data.py ran successfully.")
+            return
+            
+        # HARDWARE LOGIC: Force the 500MB 'HI-Small' dataset to prevent Colab RAM Swap lockups
+        target_csv = 'HI-Small_Trans.csv'
+        raw_path = os.path.join(raw_dir, target_csv) if target_csv in csv_files else os.path.join(raw_dir, csv_files[0])
+        
+        builder = HeteroGraphBuilder(raw_path, proc_dir)
+        builder.process()
+        logger.info("System 1 Data Building complete. Proceeding to pipeline...")
+
     logger.info("[1/6] Training XGBoost Baseline Model...")
     data_path = os.path.join(proc_dir, 'edges_sends.csv')
     try:
@@ -82,15 +101,11 @@ def run_pipeline():
         logger.error(f"Failed to build graph: {e}")
         return
 
-    logger.info("[3/6] Initializing Minibatch NeighborLoader & PyTorch GNN...")
-    # HARDWARE LOGIC: Minibatching limits GPU memory to <2GB perfectly via Subgraph Streaming
-    train_loader = NeighborLoader(
-        data,
-        num_neighbors=[15, 10], # 2-hop subgraphs
-        input_nodes=('account', torch.ones(data['account'].num_nodes, dtype=torch.bool)),
-        batch_size=4096,
-        shuffle=True
-    )
+    logger.info("[3/6] Initializing Full-Batch PyTorch GNN...")
+    # HARDWARE LOGIC: Since we forced the 500MB dataset, we can comfortably fit the entire graph 
+    # in Colab's 16GB VRAM without needing C++ subgraph samplers.
+    
+    # We just use the raw PyG Data object natively!
 
     hidden_channels = 64
     out_channels = 1
@@ -104,11 +119,11 @@ def run_pipeline():
     epochs = 100
     
     for epoch in range(1, epochs + 1):
-        loss = train_epoch(model, optimizer, train_loader, criterion, device)
+        loss = train_epoch(model, optimizer, data, criterion, device)
         
         if epoch % 20 == 0:
-            logger.info(f"Epoch {epoch:03d} | Minibatch Loss: {loss:.4f}")
-            val_auc, val_f1 = evaluate_model(model, train_loader, mask_name='val_mask', device=device)
+            logger.info(f"Epoch {epoch:03d} | Full-Batch Loss: {loss:.4f}")
+            val_auc, val_f1 = evaluate_model(model, data, mask_name='val_mask', device=device)
             
             if val_auc >= best_val_auc:
                 best_val_auc = val_auc
@@ -122,7 +137,7 @@ def run_pipeline():
     if os.path.exists(best_model_path):
         model.load_state_dict(torch.load(best_model_path, map_location=torch.device('cpu')))
         model.to(device)
-    evaluate_model(model, train_loader, mask_name='test_mask', device=device)
+    evaluate_model(model, data, mask_name='test_mask', device=device)
 
     logger.info("[5/6] Verifying Explainable AI (XAI) System...")
     try:

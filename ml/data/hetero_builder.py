@@ -15,6 +15,15 @@ class HeteroGraphBuilder:
     def process(self):
         print(f"Loading data from {self.raw_filepath}...")
         df = pd.read_csv(self.raw_filepath)
+        
+        # 0. Strip whitespace from headers and map IBM Dataset schema
+        df.columns = df.columns.str.strip()
+        df.rename(columns={
+            'Account': 'From_Account',
+            'Account.1': 'To_Account',
+            'Amount Received': 'Amount_Received',
+            'Is Laundering': 'Is_Laundering'
+        }, inplace=True)
 
         # 1. Sort temporally
         if 'Timestamp' in df.columns:

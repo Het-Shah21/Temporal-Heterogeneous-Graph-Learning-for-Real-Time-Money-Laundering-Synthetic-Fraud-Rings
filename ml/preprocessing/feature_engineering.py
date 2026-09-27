@@ -32,11 +32,14 @@ class FeatureEngineer:
         df['r_in_degree'] = df.groupby('dst').cumcount()
         df['r_total_received'] = df.groupby('dst')['amount'].cumsum() - df['amount']
 
-        # Hour of day (simulated using modulo 24 if timestamp is an integer sequence)
-        df['hour_of_day'] = (df['timestamp'] // 3600) % 24
-
-        # Calculate transaction velocity / time delta
-        df['time_delta'] = df.groupby('src')['timestamp'].diff().fillna(0)
+        # Parse timestamp safely (handles both integer and string datetime formats)
+        if df['timestamp'].dtype == 'object' or pd.api.types.is_string_dtype(df['timestamp']):
+            dt_ts = pd.to_datetime(df['timestamp'], format='mixed', errors='coerce')
+            df['hour_of_day'] = dt_ts.dt.hour.fillna(0).astype(int)
+            df['time_delta'] = dt_ts.groupby(df['src']).diff().dt.total_seconds().fillna(0)
+        else:
+            df['hour_of_day'] = (df['timestamp'] // 3600) % 24
+            df['time_delta'] = df.groupby('src')['timestamp'].diff().fillna(0)
         
         print("Normalizing continuous features to prevent exploding gradients...")
         scaler = StandardScaler()
