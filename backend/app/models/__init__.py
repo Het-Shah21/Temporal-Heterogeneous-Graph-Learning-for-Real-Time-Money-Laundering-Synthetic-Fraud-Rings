@@ -6,6 +6,7 @@ class Transaction(BaseModel):
     sender: str = Field(min_length=1)
     receiver: str = Field(min_length=1)
     amount: float = Field(gt=0)
+    timestamp: str | None = None
 
 
 class TransactionFeatures(BaseModel):
