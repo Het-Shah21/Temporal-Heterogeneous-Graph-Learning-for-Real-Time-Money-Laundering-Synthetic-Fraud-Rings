@@ -7,6 +7,8 @@ from backend.app.services.feature_service import save_features_to_redis
 import os
 from dotenv import load_dotenv
 
+MAX_RETRIES = 3
+
 load_dotenv()
 
 consumer = KafkaConsumer(
@@ -66,7 +68,14 @@ def save_transaction_to_redis(transaction):
 def consume_transactions():
     print("Transaction consumer started...")
 
+    retry_counts = {}
+
     for message in consumer:
+        message_key = (
+            message.partition,
+            message.offset
+        )
+
         try:
             transaction = message.value
 
@@ -94,9 +103,39 @@ def consume_transactions():
 
             print("Features saved to Redis!")
 
+            # Processing succeeded, so commit the offset
             consumer.commit()
+
             print("Transaction offset committed!")
 
+            # Clear retry counter after successful processing
+            retry_counts.pop(message_key, None)
+
         except Exception as error:
-            print(f"Error processing transaction: {error}")
-            print("Consumer is continuing...")
+            retry_counts[message_key] = (
+                retry_counts.get(message_key, 0) + 1
+            )
+
+            retry_count = retry_counts[message_key]
+
+            print(
+                f"Error processing transaction "
+                f"(attempt {retry_count}/{MAX_RETRIES}): {error}"
+            )
+
+            if retry_count >= MAX_RETRIES:
+                print(
+                    f"Maximum retries reached for "
+                    f"partition={message.partition}, "
+                    f"offset={message.offset}"
+                )
+
+                # Skip permanently failing message
+                consumer.commit()
+
+                print("Failed transaction offset committed.")
+
+                retry_counts.pop(message_key, None)
+
+            else:
+                print("Retrying transaction...")
