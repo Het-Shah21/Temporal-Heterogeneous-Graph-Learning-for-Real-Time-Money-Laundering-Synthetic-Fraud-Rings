@@ -16,7 +16,7 @@ consumer = KafkaConsumer(
         "localhost:9092"
     ),
     auto_offset_reset="earliest",
-    enable_auto_commit=True,
+    enable_auto_commit=False,
     group_id=os.getenv(
         "REDPANDA_GROUP_ID",
         "fraud-backend"
@@ -93,6 +93,9 @@ def consume_transactions():
             )
 
             print("Features saved to Redis!")
+
+            consumer.commit()
+            print("Transaction offset committed!")
 
         except Exception as error:
             print(f"Error processing transaction: {error}")
