@@ -218,3 +218,57 @@ def test_prediction_normal_transaction(monkeypatch):
     assert data["fraud_probability"] == 0.10
 
     assert alert_called is False
+
+def test_transaction_features_not_found():
+    response = client.get(
+        "/transactions/NON_EXISTENT_TX/features"
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["status"] == "not_found"
+    assert data["message"] == "Features not found"
+
+def test_transaction_features_success(monkeypatch):
+    transaction_id = "TEST_FEATURES_001"
+
+    fake_features = {
+        "amount": "5000",
+        "has_sender": "1",
+        "has_receiver": "1",
+        "sender_transaction_count": "3",
+        "total_amount_sent": "15000",
+        "unique_receiver_count": "2",
+        "recent_transaction_count": "2"
+    }
+
+    class FakeRedis:
+        def hgetall(self, key):
+            assert key == f"features:{transaction_id}"
+            return fake_features
+
+    import backend.app.services.redis_service as redis_service
+
+    monkeypatch.setattr(
+        redis_service,
+        "redis_client",
+        FakeRedis()
+    )
+
+    response = client.get(
+        f"/transactions/{transaction_id}/features"
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["amount"] == 5000
+    assert data["has_sender"] == 1
+    assert data["has_receiver"] == 1
+    assert data["sender_transaction_count"] == 3
+    assert data["total_amount_sent"] == 15000
+    assert data["unique_receiver_count"] == 2
+    assert data["recent_transaction_count"] == 2
