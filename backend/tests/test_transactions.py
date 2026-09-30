@@ -365,3 +365,97 @@ def test_retry_limit():
 
     assert retry_counts[message_key] == 3
     assert retry_counts[message_key] >= transaction_consumer.MAX_RETRIES
+
+def test_publish_to_dlq(monkeypatch):
+    from backend.app.services import redpanda_service
+
+    sent_messages = []
+
+    class FakeFuture:
+        def get(self, timeout):
+            return True
+
+    class FakeProducer:
+        def send(self, topic, message):
+            sent_messages.append((topic, message))
+            return FakeFuture()
+
+    monkeypatch.setattr(
+        redpanda_service,
+        "producer",
+        FakeProducer()
+    )
+
+    transaction = {
+        "transaction_id": "TEST_DLQ_001",
+        "sender": "user_failed",
+        "receiver": "user_receiver",
+        "amount": 10000
+    }
+
+    result = redpanda_service.publish_to_dlq(
+        transaction,
+        "Memgraph connection failed"
+    )
+
+    assert result is True
+
+    assert len(sent_messages) == 1
+
+    topic, message = sent_messages[0]
+
+    assert topic == "fraud_transactions_dlq"
+    assert message["transaction"] == transaction
+    assert message["error"] == "Memgraph connection failed"
+
+def publish_to_dlq(transaction: dict, error: str):
+    try:
+        dlq_message = {
+            "transaction": transaction,
+            "error": error
+        }
+
+        future = producer.send(
+            "fraud_transactions_dlq",
+            dlq_message
+        )
+
+        future.get(timeout=10)
+
+        print("Transaction published to DLQ.")
+        return True
+
+    except Exception as error:
+        print(f"DLQ publish error: {error}")
+        return False
+
+def test_publish_to_dlq_failure(monkeypatch):
+    from backend.app.services import redpanda_service
+
+    class FakeFuture:
+        def get(self, timeout):
+            raise Exception("Redpanda unavailable")
+
+    class FakeProducer:
+        def send(self, topic, message):
+            return FakeFuture()
+
+    monkeypatch.setattr(
+        redpanda_service,
+        "producer",
+        FakeProducer()
+    )
+
+    transaction = {
+        "transaction_id": "TEST_DLQ_FAIL_001",
+        "sender": "failed_sender",
+        "receiver": "failed_receiver",
+        "amount": 5000
+    }
+
+    result = redpanda_service.publish_to_dlq(
+        transaction,
+        "Processing failed"
+    )
+
+    assert result is False

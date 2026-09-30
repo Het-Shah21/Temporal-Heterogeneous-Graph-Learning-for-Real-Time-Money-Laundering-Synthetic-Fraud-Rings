@@ -31,3 +31,24 @@ def publish_transaction(transaction: dict):
     except KafkaError as error:
         print(f"Redpanda error: {error}")
         return False
+
+def publish_to_dlq(transaction: dict, error: str):
+    try:
+        dlq_message = {
+            "transaction": transaction,
+            "error": error
+        }
+
+        future = producer.send(
+            "fraud_transactions_dlq",
+            dlq_message
+        )
+
+        future.get(timeout=10)
+
+        print("Transaction published to DLQ.")
+        return True
+
+    except Exception as error:
+        print(f"DLQ publish error: {error}")
+        return False

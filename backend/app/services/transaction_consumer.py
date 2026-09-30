@@ -6,6 +6,7 @@ from backend.app.services.feature_service import build_transaction_features
 from backend.app.services.feature_service import save_features_to_redis
 import os
 from dotenv import load_dotenv
+from backend.app.services.redpanda_service import publish_to_dlq
 
 MAX_RETRIES = 3
 
@@ -133,10 +134,20 @@ def consume_transactions():
                     f"offset={message.offset}"
                 )
 
-                # Skip permanently failing message
-                consumer.commit()
+                dlq_success = publish_to_dlq(
+                    transaction,
+                    str(error)
+                )
 
-                print("Failed transaction offset committed.")
+                if dlq_success:
+                    print("Failed transaction sent to DLQ.")
+                    consumer.commit()
+                    print("Failed transaction offset committed.")
+                else:
+                    print(
+                        "Failed to publish transaction to DLQ. "
+                        "Offset will not be committed."
+                    )
 
                 retry_counts.pop(message_key, None)
 
