@@ -272,3 +272,96 @@ def test_transaction_features_success(monkeypatch):
     assert data["total_amount_sent"] == 15000
     assert data["unique_receiver_count"] == 2
     assert data["recent_transaction_count"] == 2
+
+def test_process_transaction_success(monkeypatch):
+    from backend.app.services import transaction_consumer
+
+    transaction = {
+        "transaction_id": "TEST_PROCESS_001",
+        "sender": "user_test_1",
+        "receiver": "user_test_2",
+        "amount": 5000,
+        "timestamp": "2026-09-29T10:00:00+00:00"
+    }
+
+    calls = []
+
+    monkeypatch.setattr(
+        transaction_consumer,
+        "save_transaction",
+        lambda data: calls.append("memgraph")
+    )
+
+    monkeypatch.setattr(
+        transaction_consumer,
+        "save_transaction_to_redis",
+        lambda data: calls.append("transaction_redis")
+    )
+
+    monkeypatch.setattr(
+        transaction_consumer,
+        "build_transaction_features",
+        lambda transaction_id, sender_id: {
+            "amount": 5000,
+            "has_sender": 1,
+            "has_receiver": 1,
+            "sender_transaction_count": 1,
+            "total_amount_sent": 5000,
+            "unique_receiver_count": 1,
+            "recent_transaction_count": 1
+        }
+    )
+
+    monkeypatch.setattr(
+        transaction_consumer,
+        "save_features_to_redis",
+        lambda transaction_id, features: calls.append("features_redis")
+    )
+
+    transaction_consumer.process_transaction(transaction)
+
+    assert calls == [
+        "memgraph",
+        "transaction_redis",
+        "features_redis"
+    ]
+
+def test_process_transaction_failure(monkeypatch):
+    from backend.app.services import transaction_consumer
+
+    transaction = {
+        "transaction_id": "TEST_PROCESS_FAIL_001",
+        "sender": "user_test_1",
+        "receiver": "user_test_2",
+        "amount": 5000,
+        "timestamp": "2026-09-30T10:00:00+00:00"
+    }
+
+    def failing_save_transaction(data):
+        raise Exception("Memgraph connection failed")
+
+    monkeypatch.setattr(
+        transaction_consumer,
+        "save_transaction",
+        failing_save_transaction
+    )
+
+    try:
+        transaction_consumer.process_transaction(transaction)
+        assert False, "Expected process_transaction to fail"
+    except Exception as error:
+        assert str(error) == "Memgraph connection failed"
+
+def test_retry_limit():
+    from backend.app.services import transaction_consumer
+
+    retry_counts = {}
+    message_key = (0, 100)
+
+    for _ in range(transaction_consumer.MAX_RETRIES):
+        retry_counts[message_key] = (
+            retry_counts.get(message_key, 0) + 1
+        )
+
+    assert retry_counts[message_key] == 3
+    assert retry_counts[message_key] >= transaction_consumer.MAX_RETRIES

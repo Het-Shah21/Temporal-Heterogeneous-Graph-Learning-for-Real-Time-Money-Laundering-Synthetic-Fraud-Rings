@@ -65,6 +65,31 @@ def save_transaction_to_redis(transaction):
     # Keep temporary transaction data for 1 hour
     redis_client.expire(key, 3600)
 
+def process_transaction(transaction):
+    print("Received transaction:")
+    print(transaction)
+
+    save_transaction(transaction)
+    print("Transaction saved to Memgraph!")
+
+    save_transaction_to_redis(transaction)
+    print("Transaction saved to Redis!")
+
+    features = build_transaction_features(
+        transaction["transaction_id"],
+        transaction["sender"]
+    )
+
+    print("Extracted features:")
+    print(features)
+
+    save_features_to_redis(
+        transaction["transaction_id"],
+        features
+    )
+
+    print("Features saved to Redis!")
+
 def consume_transactions():
     print("Transaction consumer started...")
 
@@ -79,29 +104,7 @@ def consume_transactions():
         try:
             transaction = message.value
 
-            print("Received transaction:")
-            print(transaction)
-
-            save_transaction(transaction)
-            print("Transaction saved to Memgraph!")
-
-            save_transaction_to_redis(transaction)
-            print("Transaction saved to Redis!")
-
-            features = build_transaction_features(
-                transaction["transaction_id"],
-                transaction["sender"]
-            )
-
-            print("Extracted features:")
-            print(features)
-
-            save_features_to_redis(
-                transaction["transaction_id"],
-                features
-            )
-
-            print("Features saved to Redis!")
+            process_transaction(transaction)
 
             # Processing succeeded, so commit the offset
             consumer.commit()
