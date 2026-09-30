@@ -224,12 +224,11 @@ def test_transaction_features_not_found():
         "/transactions/NON_EXISTENT_TX/features"
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 404
 
     data = response.json()
 
-    assert data["status"] == "not_found"
-    assert data["message"] == "Features not found"
+    assert data["detail"] == "Features not found"
 
 def test_transaction_features_success(monkeypatch):
     transaction_id = "TEST_FEATURES_001"

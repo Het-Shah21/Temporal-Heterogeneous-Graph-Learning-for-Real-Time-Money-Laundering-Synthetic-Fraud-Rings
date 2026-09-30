@@ -37,10 +37,10 @@ def get_transaction_features_api(transaction_id: str):
     data = redis_client.hgetall(f"features:{transaction_id}")
 
     if not data:
-        return {
-            "status": "not_found",
-            "message": "Features not found"
-        }
+        raise HTTPException(
+            status_code=404,
+            detail="Features not found"
+        )
 
     return {
         "amount": float(data["amount"]),
