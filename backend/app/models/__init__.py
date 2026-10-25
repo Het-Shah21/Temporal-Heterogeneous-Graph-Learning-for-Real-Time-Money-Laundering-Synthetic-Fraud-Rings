@@ -1,11 +1,28 @@
-from pydantic import BaseModel, Field
+import math
+from pydantic import BaseModel, Field, field_validator
 
 
 class Transaction(BaseModel):
     transaction_id: str = Field(min_length=1)
     sender: str = Field(min_length=1)
     receiver: str = Field(min_length=1)
-    amount: float = Field(gt=0)
+    amount: float = Field(gt=0, allow_inf_nan=False)
+    timestamp: str | None = None
+
+    @field_validator("transaction_id", "sender", "receiver")
+    @classmethod
+    def validate_non_empty_string(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Field cannot contain only whitespace")
+        return value
+
+    @field_validator("amount")
+    @classmethod
+    def validate_finite_amount(cls, value: float) -> float:
+        if not math.isfinite(value):
+            raise ValueError("Amount must be finite")
+        return value
+
     timestamp: str | None = None
 
 

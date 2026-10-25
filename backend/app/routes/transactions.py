@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from datetime import datetime, timezone
 
-from backend.app.models import Transaction, TransactionResponse, PredictionResponse
+from backend.app.models import Transaction, TransactionResponse, PredictionResponse, TransactionFeatures
 from backend.app.services.redpanda_service import publish_transaction
 from backend.app.services.ml_service import get_ml_feature_vector
 from backend.app.services.prediction_service import predict_fraud
@@ -10,27 +10,71 @@ from backend.app.services.alert_service import send_fraud_alert
 router = APIRouter(prefix="/transactions", tags=["Transactions"])
 
 
+
+
 @router.post("/", response_model=TransactionResponse)
 def create_transaction(transaction: Transaction):
-    transaction_data = transaction.model_dump()
+    from backend.app.services.redis_service import redis_client
 
-    transaction_data["timestamp"] = datetime.now(timezone.utc).isoformat()
+    transaction_id = transaction.transaction_id
+    idempotency_key = f"transaction:accepted:{transaction_id}"
 
-    success = publish_transaction(transaction_data)
-
-    if not success:
-        raise HTTPException(
-            status_code=503,
-            detail="Failed to publish transaction to Redpanda"
+    try:
+        # Atomically reserve the transaction ID.
+        reserved = redis_client.set(
+            idempotency_key,
+            "processing",
+            nx=True,
+            ex=86400
         )
 
-    return {
-        "status": "success",
-        "message": "Transaction published successfully",
-        "transaction": transaction_data
-    }
+        if not reserved:
+            raise HTTPException(
+                status_code=409,
+                detail="Transaction ID has already been accepted"
+            )
 
-@router.get("/{transaction_id}/features")
+        transaction_data = transaction.model_dump()
+        transaction_data["timestamp"] = datetime.now(
+            timezone.utc
+        ).isoformat()
+
+        success = publish_transaction(transaction_data)
+
+        if not success:
+            redis_client.delete(idempotency_key)
+            raise HTTPException(
+                status_code=503,
+                detail="Failed to publish transaction to Redpanda"
+            )
+
+        # Keep the ID reserved if this update fails, avoiding
+        # an immediate duplicate publication on a retry.
+        redis_client.set(
+            idempotency_key,
+            "accepted",
+            ex=86400
+        )
+
+        return {
+            "status": "success",
+            "message": "Transaction published successfully",
+            "transaction": transaction_data
+        }
+
+    except HTTPException:
+        raise
+    except Exception as error:
+        raise HTTPException(
+            status_code=503,
+            detail="Transaction service temporarily unavailable"
+        ) from error
+
+
+@router.get(
+    "/{transaction_id}/features",
+    response_model=TransactionFeatures
+)
 def get_transaction_features_api(transaction_id: str):
     from backend.app.services.redis_service import redis_client
 

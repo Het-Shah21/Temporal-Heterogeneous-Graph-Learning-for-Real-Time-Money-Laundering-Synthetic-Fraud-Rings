@@ -43,7 +43,17 @@ def test_empty_sender_rejected():
 
     assert response.status_code == 422
 
+
 def test_create_transaction_success(monkeypatch):
+    from backend.app.routes import transactions
+
+    class FakeRedis:
+        def set(self, key, value, nx=False, ex=None):
+            return True
+
+        def delete(self, key):
+            return 1
+
     transaction = {
         "transaction_id": "TEST_SUCCESS_001",
         "sender": "user_test_1",
@@ -55,19 +65,20 @@ def test_create_transaction_success(monkeypatch):
         return True
 
     monkeypatch.setattr(
-        "backend.app.routes.transactions.publish_transaction",
+        "backend.app.services.redis_service.redis_client",
+        FakeRedis()
+    )
+    monkeypatch.setattr(
+        transactions,
+        "publish_transaction",
         mock_publish_transaction
     )
 
-    response = client.post(
-        "/transactions/",
-        json=transaction
-    )
+    response = client.post("/transactions/", json=transaction)
 
     assert response.status_code == 200
 
     data = response.json()
-
     assert data["status"] == "success"
     assert data["message"] == "Transaction published successfully"
     assert data["transaction"]["transaction_id"] == "TEST_SUCCESS_001"
@@ -75,6 +86,7 @@ def test_create_transaction_success(monkeypatch):
     assert data["transaction"]["receiver"] == "user_test_2"
     assert data["transaction"]["amount"] == 5000
     assert "timestamp" in data["transaction"]
+
 
 def test_prediction_transaction_not_found():
     response = client.post(
@@ -351,19 +363,64 @@ def test_process_transaction_failure(monkeypatch):
     except Exception as error:
         assert str(error) == "Memgraph connection failed"
 
-def test_retry_limit():
+
+def test_retry_limit(monkeypatch):
     from backend.app.services import transaction_consumer
 
-    retry_counts = {}
-    message_key = (0, 100)
+    process_calls = []
+    dlq_calls = []
+    commit_calls = []
 
-    for _ in range(transaction_consumer.MAX_RETRIES):
-        retry_counts[message_key] = (
-            retry_counts.get(message_key, 0) + 1
-        )
+    class FakeMessage:
+        topic = "transactions"
+        partition = 0
+        offset = 100
+        value = {
+            "transaction_id": "TX_RETRY_TEST",
+            "sender": "user_1",
+            "receiver": "user_2",
+            "amount": 100,
+            "timestamp": "2026-10-24T00:00:00+00:00"
+        }
 
-    assert retry_counts[message_key] == 3
-    assert retry_counts[message_key] >= transaction_consumer.MAX_RETRIES
+    class FakeConsumer:
+        def __iter__(self):
+            yield FakeMessage()
+
+        def commit(self, offsets=None):
+            commit_calls.append(offsets)
+
+    def fail_processing(transaction):
+        process_calls.append(transaction)
+        raise RuntimeError("Simulated processing failure")
+
+    def successful_dlq(transaction, error):
+        dlq_calls.append((transaction, error))
+        return True
+
+    monkeypatch.setattr(
+        transaction_consumer,
+        "consumer",
+        FakeConsumer()
+    )
+    monkeypatch.setattr(
+        transaction_consumer,
+        "process_transaction",
+        fail_processing
+    )
+    monkeypatch.setattr(
+        transaction_consumer,
+        "publish_to_dlq",
+        successful_dlq
+    )
+
+    transaction_consumer.consume_transactions()
+
+    assert len(process_calls) == transaction_consumer.MAX_RETRIES
+    assert len(dlq_calls) == 1
+    assert len(commit_calls) == 1
+    assert dlq_calls[0][0]["transaction_id"] == "TX_RETRY_TEST"
+
 
 def test_publish_to_dlq(monkeypatch):
     from backend.app.services import redpanda_service
@@ -458,3 +515,248 @@ def test_publish_to_dlq_failure(monkeypatch):
     )
 
     assert result is False
+
+
+def test_whitespace_only_sender_rejected():
+    response = client.post(
+        "/transactions/",
+        json={
+            "transaction_id": "TX_INVALID_01",
+            "sender": "   ",
+            "receiver": "user_2",
+            "amount": 100
+        }
+    )
+    assert response.status_code == 422
+
+
+def test_whitespace_only_transaction_id_rejected():
+    response = client.post(
+        "/transactions/",
+        json={
+            "transaction_id": "   ",
+            "sender": "user_1",
+            "receiver": "user_2",
+            "amount": 100
+        }
+    )
+    assert response.status_code == 422
+
+
+def test_zero_amount_rejected():
+    response = client.post(
+        "/transactions/",
+        json={
+            "transaction_id": "TX_INVALID_02",
+            "sender": "user_1",
+            "receiver": "user_2",
+            "amount": 0
+        }
+    )
+    assert response.status_code == 422
+
+
+def test_negative_amount_rejected_again():
+    response = client.post(
+        "/transactions/",
+        json={
+            "transaction_id": "TX_INVALID_03",
+            "sender": "user_1",
+            "receiver": "user_2",
+            "amount": -100
+        }
+    )
+    assert response.status_code == 422
+
+
+def test_dlq_failure_does_not_commit_offset(monkeypatch):
+    from backend.app.services import transaction_consumer
+
+    process_calls = []
+    commit_calls = []
+
+    class FakeMessage:
+        topic = "transactions"
+        partition = 0
+        offset = 101
+        value = {
+            "transaction_id": "TX_DLQ_FAILURE",
+            "sender": "user_1",
+            "receiver": "user_2",
+            "amount": 100,
+            "timestamp": "2026-10-24T00:00:00+00:00"
+        }
+
+    class FakeConsumer:
+        def __iter__(self):
+            yield FakeMessage()
+
+        def commit(self, offsets=None):
+            commit_calls.append(offsets)
+
+    def fail_processing(transaction):
+        process_calls.append(transaction)
+        raise RuntimeError("Simulated database failure")
+
+    def fail_dlq(transaction, error):
+        return False
+
+    monkeypatch.setattr(
+        transaction_consumer,
+        "consumer",
+        FakeConsumer()
+    )
+    monkeypatch.setattr(
+        transaction_consumer,
+        "process_transaction",
+        fail_processing
+    )
+    monkeypatch.setattr(
+        transaction_consumer,
+        "publish_to_dlq",
+        fail_dlq
+    )
+
+    transaction_consumer.consume_transactions()
+
+    assert len(process_calls) == transaction_consumer.MAX_RETRIES
+    assert len(commit_calls) == 0
+
+def test_successful_processing_commits_offset_once(monkeypatch):
+    from backend.app.services import transaction_consumer
+    from kafka import TopicPartition
+    from kafka.structs import OffsetAndMetadata
+
+    process_calls = []
+    commit_calls = []
+    dlq_calls = []
+
+    class FakeMessage:
+        topic = "transactions"
+        partition = 0
+        offset = 102
+        value = {
+            "transaction_id": "TX_SUCCESS_TEST",
+            "sender": "user_1",
+            "receiver": "user_2",
+            "amount": 100,
+            "timestamp": "2026-10-24T00:00:00+00:00"
+        }
+
+    class FakeConsumer:
+        def __iter__(self):
+            yield FakeMessage()
+
+        def commit(self, offsets=None):
+            commit_calls.append(offsets)
+
+    def successful_processing(transaction):
+        process_calls.append(transaction)
+
+    def unexpected_dlq(transaction, error):
+        dlq_calls.append(transaction)
+        return True
+
+    monkeypatch.setattr(
+        transaction_consumer, "consumer", FakeConsumer()
+    )
+    monkeypatch.setattr(
+        transaction_consumer, "process_transaction",
+        successful_processing
+    )
+    monkeypatch.setattr(
+        transaction_consumer, "publish_to_dlq", unexpected_dlq
+    )
+
+    transaction_consumer.consume_transactions()
+
+    assert len(process_calls) == 1
+    assert len(commit_calls) == 1
+    assert len(dlq_calls) == 0
+
+    committed = commit_calls[0]
+    tp = TopicPartition("transactions", 0)
+    assert committed[tp] == OffsetAndMetadata(103, "")
+
+
+
+def test_duplicate_transaction_id_rejected(monkeypatch):
+    from backend.app.routes import transactions
+
+    accepted_ids = set()
+    publish_calls = []
+
+    class FakeRedis:
+        def set(self, key, value, nx=False, ex=None):
+            if nx and key in accepted_ids:
+                return None
+            accepted_ids.add(key)
+            return True
+
+        def delete(self, key):
+            accepted_ids.discard(key)
+
+    def mock_publish_transaction(data):
+        publish_calls.append(data["transaction_id"])
+        return True
+
+    monkeypatch.setattr(
+        "backend.app.services.redis_service.redis_client",
+        FakeRedis()
+    )
+    monkeypatch.setattr(
+        transactions,
+        "publish_transaction",
+        mock_publish_transaction
+    )
+
+    transaction = {
+        "transaction_id": "DUPLICATE_TEST_001",
+        "sender": "user_test_1",
+        "receiver": "user_test_2",
+        "amount": 500
+    }
+
+    first_response = client.post("/transactions/", json=transaction)
+    second_response = client.post("/transactions/", json=transaction)
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 409
+    assert len(publish_calls) == 1
+
+
+def test_create_transaction_redis_unavailable(monkeypatch):
+    from backend.app.routes import transactions
+
+    class FailingRedis:
+        def set(self, *args, **kwargs):
+            raise ConnectionError("Redis unavailable")
+
+    publish_calls = []
+
+    def mock_publish_transaction(data):
+        publish_calls.append(data)
+        return True
+
+    monkeypatch.setattr(
+        "backend.app.services.redis_service.redis_client",
+        FailingRedis()
+    )
+    monkeypatch.setattr(
+        transactions,
+        "publish_transaction",
+        mock_publish_transaction
+    )
+
+    response = client.post(
+        "/transactions/",
+        json={
+            "transaction_id": "TX_REDIS_DOWN",
+            "sender": "user_1",
+            "receiver": "user_2",
+            "amount": 100
+        }
+    )
+
+    assert response.status_code == 503
+    assert publish_calls == []

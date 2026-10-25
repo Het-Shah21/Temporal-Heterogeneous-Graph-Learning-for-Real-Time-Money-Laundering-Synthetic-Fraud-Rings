@@ -16,6 +16,7 @@ def get_transaction_features(transaction_id):
     }
 
 
+
 def build_transaction_features(transaction_id, sender_id):
     transaction_features = get_transaction_features(transaction_id)
 
@@ -30,6 +31,7 @@ def build_transaction_features(transaction_id, sender_id):
         result = session.run(
             """
             MATCH (sender:User {id: $sender_id})-[r:SENT]->(receiver:User)
+            WHERE r.transaction_id <> $transaction_id
 
             RETURN
                 count(r) AS sender_transaction_count,
@@ -37,42 +39,36 @@ def build_transaction_features(transaction_id, sender_id):
                 count(DISTINCT receiver) AS unique_receiver_count,
                 sum(
                     CASE
-                        WHEN r.timestamp >= $cutoff_time
+                        WHEN datetime(r.timestamp) >= datetime($cutoff_time)
                         THEN 1
                         ELSE 0
                     END
                 ) AS recent_transaction_count
             """,
             sender_id=sender_id,
+            transaction_id=transaction_id,
             cutoff_time=cutoff_time
         )
 
         record = result.single()
 
-        if record:
-            transaction_features["sender_transaction_count"] = (
-                record["sender_transaction_count"]
-            )
-
-            transaction_features["total_amount_sent"] = float(
-                record["total_amount_sent"]
-            )
-
-            transaction_features["unique_receiver_count"] = (
-                record["unique_receiver_count"]
-            )
-
-            transaction_features["recent_transaction_count"] = (
-                record["recent_transaction_count"] or 0
-            )
-
+        if record is None:
+            transaction_features.update({
+                "sender_transaction_count": 0,
+                "total_amount_sent": 0.0,
+                "unique_receiver_count": 0,
+                "recent_transaction_count": 0
+            })
         else:
-            transaction_features["sender_transaction_count"] = 0
-            transaction_features["total_amount_sent"] = 0.0
-            transaction_features["unique_receiver_count"] = 0
-            transaction_features["recent_transaction_count"] = 0
+            transaction_features.update({
+                "sender_transaction_count": record["sender_transaction_count"],
+                "total_amount_sent": float(record["total_amount_sent"]),
+                "unique_receiver_count": record["unique_receiver_count"],
+                "recent_transaction_count": record["recent_transaction_count"] or 0
+            })
 
     return transaction_features
+
 
 
 def save_features_to_redis(transaction_id, features):

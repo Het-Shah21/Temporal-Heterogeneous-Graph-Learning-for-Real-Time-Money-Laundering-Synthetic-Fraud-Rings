@@ -1,4 +1,5 @@
-from kafka import KafkaConsumer
+from kafka import KafkaConsumer, TopicPartition
+from kafka.structs import OffsetAndMetadata
 import json
 from backend.app.services.memgraph_service import driver
 from backend.app.services.redis_service import redis_client
@@ -91,65 +92,78 @@ def process_transaction(transaction):
 
     print("Features saved to Redis!")
 
+
 def consume_transactions():
     print("Transaction consumer started...")
 
-    retry_counts = {}
-
     for message in consumer:
-        message_key = (
-            message.partition,
-            message.offset
-        )
+        transaction = message.value
 
-        try:
-            transaction = message.value
+        for attempt in range(1, MAX_RETRIES + 1):
+            try:
+                process_transaction(transaction)
 
-            process_transaction(transaction)
+                # Commit only this partition's successfully processed offset.
+                consumer.commit(
+                    offsets={
+                        TopicPartition(
+                            message.topic,
+                            message.partition
+                        ): OffsetAndMetadata(
+                            message.offset + 1,
+                            ""
+                        )
+                    }
+                )
 
-            # Processing succeeded, so commit the offset
-            consumer.commit()
-
-            print("Transaction offset committed!")
-
-            # Clear retry counter after successful processing
-            retry_counts.pop(message_key, None)
-
-        except Exception as error:
-            retry_counts[message_key] = (
-                retry_counts.get(message_key, 0) + 1
-            )
-
-            retry_count = retry_counts[message_key]
-
-            print(
-                f"Error processing transaction "
-                f"(attempt {retry_count}/{MAX_RETRIES}): {error}"
-            )
-
-            if retry_count >= MAX_RETRIES:
                 print(
-                    f"Maximum retries reached for "
-                    f"partition={message.partition}, "
-                    f"offset={message.offset}"
+                    f"Transaction processed successfully. "
+                    f"Offset {message.offset} committed."
+                )
+                break
+
+            except Exception as error:
+                print(
+                    f"Error processing transaction "
+                    f"(attempt {attempt}/{MAX_RETRIES}): {error}"
                 )
 
-                dlq_success = publish_to_dlq(
-                    transaction,
-                    str(error)
-                )
+                if attempt < MAX_RETRIES:
+                    print("Retrying the same transaction...")
+                    continue
+
+                print("Maximum retries reached. Sending to DLQ...")
+
+                try:
+                    dlq_success = publish_to_dlq(
+                        transaction,
+                        str(error)
+                    )
+                except Exception as dlq_error:
+                    print(f"DLQ publishing failed: {dlq_error}")
+                    dlq_success = False
 
                 if dlq_success:
                     print("Failed transaction sent to DLQ.")
-                    consumer.commit()
+
+                    consumer.commit(
+                        offsets={
+                            TopicPartition(
+                                message.topic,
+                                message.partition
+                            ): OffsetAndMetadata(
+                                message.offset + 1,
+                                ""
+                            )
+                        }
+                    )
+
                     print("Failed transaction offset committed.")
                 else:
                     print(
-                        "Failed to publish transaction to DLQ. "
+                        "DLQ publishing failed. "
                         "Offset will not be committed."
                     )
-
-                retry_counts.pop(message_key, None)
-
-            else:
-                print("Retrying transaction...")
+                    # Stop consuming so later messages cannot be
+                    # committed past this failed message.
+                    return
