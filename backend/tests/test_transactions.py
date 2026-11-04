@@ -88,11 +88,15 @@ def test_create_transaction_success(monkeypatch):
     assert "timestamp" in data["transaction"]
 
 
-def test_prediction_transaction_not_found():
+def test_prediction_transaction_not_found(monkeypatch):
+    from backend.app.services import redis_service
+    class FakeRedis:
+        def hgetall(self, _key):
+            return {}
+    monkeypatch.setattr(redis_service, "redis_client", FakeRedis())
     response = client.post(
         "/transactions/NON_EXISTENT_TX/predict"
     )
-
     assert response.status_code == 404
     assert response.json()["detail"] == "Transaction not found"
 
@@ -231,15 +235,17 @@ def test_prediction_normal_transaction(monkeypatch):
 
     assert alert_called is False
 
-def test_transaction_features_not_found():
+def test_transaction_features_not_found(monkeypatch):
+    from backend.app.services import redis_service
+    class FakeRedis:
+        def hgetall(self, _key):
+            return {}
+    monkeypatch.setattr(redis_service, "redis_client", FakeRedis())
     response = client.get(
         "/transactions/NON_EXISTENT_TX/features"
     )
-
     assert response.status_code == 404
-
     data = response.json()
-
     assert data["detail"] == "Features not found"
 
 def test_transaction_features_success(monkeypatch):

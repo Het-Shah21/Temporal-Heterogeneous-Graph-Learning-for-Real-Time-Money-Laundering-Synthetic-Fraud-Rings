@@ -1,8 +1,10 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from backend.app.routes.transactions import router as transaction_router
 from backend.app.routes.websocket import router as websocket_router
+
 
 class ServiceHealth(BaseModel):
     redis: bool
@@ -13,6 +15,7 @@ class ServiceHealth(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     services: ServiceHealth
+
 
 @asynccontextmanager
 async def lifespan(_app):
@@ -32,8 +35,19 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Enable CORS for Next.js frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(transaction_router)
 app.include_router(websocket_router)
+
+
 @app.get("/")
 def root():
     return {

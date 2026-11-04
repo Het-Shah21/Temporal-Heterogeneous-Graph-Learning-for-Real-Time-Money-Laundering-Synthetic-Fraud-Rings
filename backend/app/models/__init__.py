@@ -37,8 +37,6 @@ class Transaction(BaseModel):
             parsed = parsed.replace(tzinfo=timezone.utc)
         return parsed.astimezone(timezone.utc).isoformat()
 
-    timestamp: str | None = None
-
 
 class TransactionFeatures(BaseModel):
     amount: float
@@ -49,13 +47,18 @@ class TransactionFeatures(BaseModel):
     r_total_received: float
     time_delta: float
 
+
 class TransactionResponse(BaseModel):
     status: str
     message: str
     transaction: Transaction
+
 
 class PredictionResponse(BaseModel):
     status: str
     transaction_id: str
     prediction: int
     fraud_probability: float
+    gnn_probability: float | None = None
+    is_alert: bool | None = None
+    xai_factors: list[dict] | None = None

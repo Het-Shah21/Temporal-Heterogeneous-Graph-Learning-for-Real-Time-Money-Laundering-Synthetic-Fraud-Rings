@@ -25,7 +25,7 @@ function runPythonInference(payload: Record<string, unknown>): Promise<unknown> 
       try {
         const json = JSON.parse(stdoutData.trim());
         resolve(json);
-      } catch (err) {
+      } catch {
         reject(new Error(`Failed to parse python output: ${stdoutData}`));
       }
     });
@@ -72,9 +72,25 @@ export async function POST(req: NextRequest) {
       Payment_Format: paymentFormat
     };
 
-    // Run 100% Real Python ML Inference Service via stdin
+    // 1. Try routing via running FastAPI backend first (http://127.0.0.1:8000)
+    try {
+      const fastApiResponse = await fetch("http://127.0.0.1:8000/transactions/screen", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(2000)
+      });
+      if (fastApiResponse.ok) {
+        const result = await fastApiResponse.json();
+        return NextResponse.json({ ...result, backendSource: "FASTAPI_BACKEND_PORT_8000" }, { status: 200 });
+      }
+    } catch {
+      // Backend offline -> gracefully fallback to local Python child process
+    }
+
+    // 2. Direct Python ML Inference Service via stdin
     const mlResult = await runPythonInference(payload);
-    return NextResponse.json(mlResult, { status: 200 });
+    return NextResponse.json({ ...(mlResult as object), backendSource: "NATIVE_PYTHON_PROCESS" }, { status: 200 });
 
   } catch (error) {
     const message = error instanceof Error ? error.message : "Inference pipeline failed";

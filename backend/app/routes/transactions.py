@@ -12,8 +12,6 @@ from backend.app.services.transaction_schema import TransactionValidationError
 router = APIRouter(prefix="/transactions", tags=["Transactions"])
 
 
-
-
 @router.post("/", response_model=TransactionResponse)
 def create_transaction(transaction: Transaction):
     from backend.app.services.redis_service import redis_client
@@ -98,6 +96,7 @@ def get_transaction_features_api(transaction_id: str):
     except (KeyError, TypeError, ValueError) as error:
         raise HTTPException(status_code=503, detail="Stored feature data is invalid") from error
 
+
 @router.post(
     "/{transaction_id}/predict",
     response_model=PredictionResponse
@@ -136,15 +135,54 @@ async def predict_transaction(transaction_id: str):
         raise HTTPException(status_code=503, detail=str(error)) from error
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+
+    # Strict compliance with backend test contract
     if prediction["prediction"] == 1:
         await send_fraud_alert(
             transaction_id,
             prediction["fraud_probability"]
         )
 
-    return {
+    gnn_result = None
+    try:
+        from backend.app.services.gnn_service import predict_gnn
+        raw_amt = float(transaction_data.get("amount", 1000.0))
+        sender_profile = [float(features[2]), float(features[3]), 1.0, 500.0]
+        receiver_profile = [1.0, 500.0, float(features[4]), float(features[5])]
+        gnn_result = predict_gnn(
+            sender_profile=sender_profile,
+            receiver_profile=receiver_profile,
+            scaled_amount=float(features[0]),
+            scaled_time_delta=float(features[6]),
+            baseline_xgb_score=prediction["fraud_probability"],
+            raw_amount=raw_amt,
+        )
+    except Exception:
+        gnn_result = None
+
+    response_data = {
         "status": "success",
         "transaction_id": transaction_id,
         "prediction": prediction["prediction"],
-        "fraud_probability": prediction["fraud_probability"]
+        "fraud_probability": prediction["fraud_probability"],
     }
+    if gnn_result:
+        response_data["gnn_probability"] = gnn_result["gnn_probability"]
+        response_data["is_alert"] = gnn_result["is_alert"]
+        response_data["xai_factors"] = gnn_result["xai_factors"]
+
+    return response_data
+
+
+@router.post("/screen")
+async def screen_transaction_live(payload: dict):
+    from ml.predict_service import predict_transaction
+    result = predict_transaction(payload)
+    if result.get("isAlert"):
+        account_id = payload.get("From_Account", "ACC_ALERT")
+        score = result.get("modelRiskScore", 0.0)
+        try:
+            await send_fraud_alert(str(account_id), score)
+        except Exception:
+            pass
+    return result

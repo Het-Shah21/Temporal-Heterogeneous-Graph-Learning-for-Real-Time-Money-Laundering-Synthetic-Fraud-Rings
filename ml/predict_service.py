@@ -233,7 +233,7 @@ def predict_transaction(row_data):
         }
     }
 
-    print(json.dumps(result))
+    return result
 
 if __name__ == '__main__':
     raw_input = ""
@@ -259,4 +259,5 @@ if __name__ == '__main__':
             "Receiving_Currency": "US Dollar",
             "Payment_Format": "Wire"
         }
-    predict_transaction(payload)
+    output = predict_transaction(payload)
+    print(json.dumps(output))
