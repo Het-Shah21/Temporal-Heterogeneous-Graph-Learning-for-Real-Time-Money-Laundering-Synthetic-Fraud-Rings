@@ -4,3 +4,9 @@ redis
 neo4j
 python-dotenv
 kafka-python
+numpy
+pandas
+xgboost
+pytest
+httpx
+websockets

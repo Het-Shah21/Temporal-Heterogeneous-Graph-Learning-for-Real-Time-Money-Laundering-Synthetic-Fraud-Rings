@@ -10,7 +10,8 @@ MEMGRAPH_PASSWORD = os.getenv("MEMGRAPH_PASSWORD", "")
 
 driver = GraphDatabase.driver(
     MEMGRAPH_URI,
-    auth=(MEMGRAPH_USER, MEMGRAPH_PASSWORD)
+    auth=(MEMGRAPH_USER, MEMGRAPH_PASSWORD),
+    connection_timeout=5
 )
 
 
@@ -18,3 +19,9 @@ def check_memgraph():
     with driver.session() as session:
         result = session.run("RETURN 1 AS test")
         return result.single()["test"]
+
+
+def close_memgraph():
+    close = getattr(driver, "close", None)
+    if close:
+        close()
