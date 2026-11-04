@@ -459,3 +459,24 @@ NEEDS OPTIMIZATION (CUDA Out of Memory Crash)
 
 **5. Resolution & Final Solution**
 - Implemented advanced Enterprise Graph Minibatching. Completely refactored `gnn.py` and `train_pipeline.py` to utilize PyTorch Geometric's `NeighborLoader`. The massive graph now stays securely on the system CPU. The loader dynamically samples 2-hop subgraphs and "streams" them into the GPU in tiny chunks (batch_size=4096), keeping maximum GPU memory usage strictly under 2GB, guaranteeing the system can handle infinite scaling.
+
+### Codebase Audit Phase 20: Colab Production Run & Precision Collapse
+
+**1. What was Tested?**
+A full end-to-end production simulation on Google Colab using the actual IBM AML Kaggle Dataset (`HI-Small_Trans.csv`).
+
+**2. Test Methodology & Execution**
+- Executed `colab_training.ipynb` containing the `train_pipeline.py` orchestrator.
+- Evaluated Final GNN ROC-AUC and F1-Scores against the XGBoost baseline.
+
+**3. Verdict**
+NEEDS OPTIMIZATION (Class Imbalance Precision Collapse)
+
+**4. Issues / Loopholes Found**
+- **Flaw 34 (Mathematical Logic):** The PyTorch GNN achieved a solid ROC-AUC (0.8062) and a high Recall (80%). However, due to the extreme class imbalance (0.2% fraud rate), the standard `BCEWithLogitsLoss` and a rigid `0.5` probability threshold caused Precision to collapse to 1%. The AI flagged 99 false positives for every 1 true fraud, which is mathematically expected but operationally unacceptable for a production system.
+- **Flaw 35 (Dependencies):** ONNX Export threw a missing `onnxscript` dependency warning, and the XAI Explainer threw a missing `allow_unused=True` warning due to topological nodes (Devices/IPs) lacking backpropagated gradients in this specific PyG setup.
+
+**5. Resolution & Final Solution**
+- (Pending Implementation) Rip out standard `BCEWithLogitsLoss` and replace with mathematically advanced **Focal Loss** to dynamically down-weight easy legitimate transactions.
+- (Pending Implementation) Implement Dynamic Threshold Tuning in `train_pipeline.py` to calculate the exact probability cutoff that maximizes F1-Score on the Validation Set, filtering out the False Positives.
+- Injected `onnxscript` into `requirements.txt` and patched the Explainer warning.

@@ -116,6 +116,7 @@ def run_pipeline():
 
     logger.info("[4/6] Training GNN Model (100 Epochs)...")
     best_val_auc = 0.0
+    best_threshold = 0.5
     epochs = 100
     
     for epoch in range(1, epochs + 1):
@@ -123,10 +124,12 @@ def run_pipeline():
         
         if epoch % 20 == 0:
             logger.info(f"Epoch {epoch:03d} | Full-Batch Loss: {loss:.4f}")
-            val_auc, val_f1 = evaluate_model(model, data, mask_name='val_mask', device=device)
+            # Tune threshold dynamically during validation
+            val_auc, val_f1, optimal_thresh = evaluate_model(model, data, mask_name='val_mask', device=device, tune_threshold=True)
             
             if val_auc >= best_val_auc:
                 best_val_auc = val_auc
+                best_threshold = optimal_thresh
                 pth_path = os.path.join(artifacts_dir, 'gnn_model.pth')
                 torch.save(model.cpu().state_dict(), pth_path)
                 model.to(device)
@@ -137,7 +140,9 @@ def run_pipeline():
     if os.path.exists(best_model_path):
         model.load_state_dict(torch.load(best_model_path, map_location=torch.device('cpu')))
         model.to(device)
-    evaluate_model(model, data, mask_name='test_mask', device=device)
+        
+    logger.info(f"Applying mathematically optimal threshold: {best_threshold:.4f}")
+    test_auc, test_f1, _ = evaluate_model(model, data, mask_name='test_mask', device=device, threshold=best_threshold, tune_threshold=False)
 
     logger.info("[5/6] Verifying Explainable AI (XAI) System...")
     try:

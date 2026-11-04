@@ -173,3 +173,17 @@
 - **Why:** Real-world enterprise fraud datasets are gigabytes or terabytes in size and mathematically cannot fit inside standard GPU hardware during convolutional message passing. By keeping the graph on the CPU and streaming local subgraphs to the GPU, we decouple the dataset size from the hardware limits entirely.
 - **Where:** `ml/train_pipeline.py` & `ml/models/gnn.py`
 - **When:** Week 3, Ultimate Hardware Limit Sweep.
+
+### Decision 026: Reverting to Native Full-Batch GPU Mode for PyG Stability
+
+- **What:** Decided to rip out the PyTorch Geometric `NeighborLoader` (which relies heavily on PyG C++ libraries like `pyg-lib` and `torch-sparse`) and reverted the pipeline to native Full-Batch PyTorch training.
+- **Why:** Cloud machines (like Google Colab) often have deeply misaligned CUDA/PyTorch runtime environments, causing dynamic C++ wheels to fail during installation. Because we artificially restricted the data pipeline to the 500MB `HI-Small_Trans.csv`, the entire graph only consumes ~1.2GB of VRAM. This safely fits into a standard 16GB Cloud GPU natively without triggering OOM crashes, bypassing the entire C++ subgraph bottleneck entirely.
+- **Where:** `ml/train_pipeline.py` & `ml/models/gnn.py`
+- **When:** Week 3, Colab Cloud Migration Sweep.
+
+### Decision 027: Robust Datetime Parsing over Integer Timestamps
+
+- **What:** Decided to upgrade the feature engineering pipeline to dynamically detect and parse String Datetime representations (`"2022/09/01 12:34"`) natively into Pandas datetime objects, alongside standard unix epoch integers.
+- **Why:** Simulated datasets often use clean sequential integers (`1, 2, 3...`), but real-world enterprise databases (like the Kaggle IBM AML dataset) store temporal data as string datetimes. Performing integer division (`// 3600`) on a string immediately throws a Python `TypeError`. This guarantees the ML pipeline can mathematically parse either schema transparently.
+- **Where:** `ml/preprocessing/feature_engineering.py`
+- **When:** Week 3, Colab Cloud Migration Sweep.

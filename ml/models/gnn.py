@@ -45,6 +45,24 @@ class HeteroFraudGNN(torch.nn.Module):
         out = self.lin2(out)
         return out.squeeze(-1)
 
+class FocalLoss(torch.nn.Module):
+    def __init__(self, alpha=0.25, gamma=2.0, reduction='mean'):
+        super().__init__()
+        self.alpha = alpha
+        self.gamma = gamma
+        self.reduction = reduction
+
+    def forward(self, inputs, targets):
+        bce_loss = F.binary_cross_entropy_with_logits(inputs, targets, reduction='none')
+        pt = torch.exp(-bce_loss) 
+        focal_loss = self.alpha * (1 - pt) ** self.gamma * bce_loss
+        
+        if self.reduction == 'mean':
+            return focal_loss.mean()
+        elif self.reduction == 'sum':
+            return focal_loss.sum()
+        return focal_loss
+
 def get_criterion(data):
     mask = data['account', 'sends', 'account'].train_mask
     y_train = data['account', 'sends', 'account'].y[mask]
@@ -71,12 +89,11 @@ def train_epoch(model, optimizer, data, criterion, device):
         
     return 0.0
 
-def evaluate_model(model, data, mask_name='test_mask', device='cpu'):
-    """Evaluates metrics in full-batch mode."""
+def evaluate_model(model, data, mask_name='test_mask', device='cpu', threshold=0.5, tune_threshold=False):
+    """Evaluates metrics in full-batch mode. Optionally tunes the decision threshold."""
     model.eval()
     all_y_true = []
     all_y_proba = []
-    all_y_pred = []
     
     with torch.no_grad():
         data = data.to(device)
@@ -88,35 +105,46 @@ def evaluate_model(model, data, mask_name='test_mask', device='cpu'):
             y_logits = out[mask].cpu().numpy()
             
             y_proba = 1.0 / (1.0 + np.exp(-y_logits))
-            y_pred = (y_proba > 0.5).astype(int)
             
             all_y_true.extend(y_true)
             all_y_proba.extend(y_proba)
-            all_y_pred.extend(y_pred)
             
     if len(all_y_true) == 0:
-        return 0.0, 0.0
+        return 0.0, 0.0, threshold
         
     y_true_arr = np.array(all_y_true)
     y_proba_arr = np.array(all_y_proba)
-    y_pred_arr = np.array(all_y_pred)
     
     if len(np.unique(y_true_arr)) > 1:
         auc = roc_auc_score(y_true_arr, y_proba_arr)
     else:
         auc = 0.5
         
+    best_threshold = threshold
+    if tune_threshold:
+        # Sweep thresholds to maximize F1-Score
+        thresholds = np.linspace(0.1, 0.95, 85)
+        best_f1 = 0
+        for t in thresholds:
+            preds = (y_proba_arr > t).astype(int)
+            f1 = f1_score(y_true_arr, preds, zero_division=0)
+            if f1 > best_f1:
+                best_f1 = f1
+                best_threshold = t
+        print(f"\n[Optimal Threshold Tuned to: {best_threshold:.4f} (F1: {best_f1:.4f})]")
+        
+    y_pred_arr = (y_proba_arr > best_threshold).astype(int)
     f1 = f1_score(y_true_arr, y_pred_arr, zero_division=0)
     report = classification_report(y_true_arr, y_pred_arr, target_names=["Legitimate", "Fraud"], zero_division=0)
     
     print(f"\n--- GNN METRICS ({mask_name.upper()}) ---")
     print(f"ROC-AUC: {auc:.4f}")
-    print(f"F1-Score: {f1:.4f}")
+    print(f"F1-Score: {f1:.4f} (Threshold: {best_threshold:.4f})")
     print("\nClassification Report:\n", report)
     
     # Explicit memory flush
-    del all_y_true, all_y_proba, all_y_pred
+    del all_y_true, all_y_proba
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
         
-    return auc, f1
+    return auc, f1, best_threshold
