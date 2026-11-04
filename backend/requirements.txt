@@ -7,6 +7,8 @@ kafka-python
 numpy
 pandas
 xgboost
+torch
+scikit-learn
 pytest
 httpx
 websockets

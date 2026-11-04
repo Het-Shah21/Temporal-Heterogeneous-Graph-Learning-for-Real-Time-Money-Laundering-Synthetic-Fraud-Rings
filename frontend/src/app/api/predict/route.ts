@@ -72,9 +72,10 @@ export async function POST(req: NextRequest) {
       Payment_Format: paymentFormat
     };
 
-    // 1. Try routing via running FastAPI backend first (http://127.0.0.1:8000)
+    // 1. Try routing via running FastAPI backend (configured via BACKEND_API_URL or localhost:8000)
+    const backendUrl = process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "http://127.0.0.1:8000";
     try {
-      const fastApiResponse = await fetch("http://127.0.0.1:8000/transactions/screen", {
+      const fastApiResponse = await fetch(`${backendUrl}/transactions/screen`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -82,7 +83,7 @@ export async function POST(req: NextRequest) {
       });
       if (fastApiResponse.ok) {
         const result = await fastApiResponse.json();
-        return NextResponse.json({ ...result, backendSource: "FASTAPI_BACKEND_PORT_8000" }, { status: 200 });
+        return NextResponse.json({ ...result, backendSource: backendUrl }, { status: 200 });
       }
     } catch (fetchErr) {
       console.warn("FastAPI backend route unavailable or timed out, using native Python fallback:", fetchErr);
