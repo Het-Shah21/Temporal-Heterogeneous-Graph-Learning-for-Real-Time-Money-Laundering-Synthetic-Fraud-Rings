@@ -78,14 +78,14 @@ export async function POST(req: NextRequest) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(2000)
+        signal: AbortSignal.timeout(8000)
       });
       if (fastApiResponse.ok) {
         const result = await fastApiResponse.json();
         return NextResponse.json({ ...result, backendSource: "FASTAPI_BACKEND_PORT_8000" }, { status: 200 });
       }
-    } catch {
-      // Backend offline -> gracefully fallback to local Python child process
+    } catch (fetchErr) {
+      console.warn("FastAPI backend route unavailable or timed out, using native Python fallback:", fetchErr);
     }
 
     // 2. Direct Python ML Inference Service via stdin
