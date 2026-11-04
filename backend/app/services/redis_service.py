@@ -13,3 +13,9 @@ redis_client = redis.Redis(
 
 def check_redis():
     return redis_client.ping()
+
+
+def close_redis():
+    close = getattr(redis_client, "close", None)
+    if close:
+        close()

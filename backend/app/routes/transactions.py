@@ -4,8 +4,9 @@ from datetime import datetime, timezone
 from backend.app.models import Transaction, TransactionResponse, PredictionResponse, TransactionFeatures
 from backend.app.services.redpanda_service import publish_transaction
 from backend.app.services.ml_service import get_ml_feature_vector
-from backend.app.services.prediction_service import predict_fraud
+from backend.app.services.prediction_service import predict_fraud, ModelUnavailable
 from backend.app.services.alert_service import send_fraud_alert
+from backend.app.services.transaction_schema import normalize_transaction
 
 router = APIRouter(prefix="/transactions", tags=["Transactions"])
 
@@ -34,10 +35,7 @@ def create_transaction(transaction: Transaction):
                 detail="Transaction ID has already been accepted"
             )
 
-        transaction_data = transaction.model_dump()
-        transaction_data["timestamp"] = datetime.now(
-            timezone.utc
-        ).isoformat()
+        transaction_data = normalize_transaction(transaction.model_dump())
 
         success = publish_transaction(transaction_data)
 
@@ -88,12 +86,12 @@ def get_transaction_features_api(transaction_id: str):
 
     return {
         "amount": float(data["amount"]),
-        "has_sender": int(data["has_sender"]),
-        "has_receiver": int(data["has_receiver"]),
-        "sender_transaction_count": int(data["sender_transaction_count"]),
-        "total_amount_sent": float(data["total_amount_sent"]),
-        "unique_receiver_count": int(data["unique_receiver_count"]),
-        "recent_transaction_count": int(data["recent_transaction_count"])
+        "hour_of_day": int(data["hour_of_day"]),
+        "s_out_degree": int(data["s_out_degree"]),
+        "s_total_sent": float(data["s_total_sent"]),
+        "r_in_degree": int(data["r_in_degree"]),
+        "r_total_received": float(data["r_total_received"]),
+        "time_delta": float(data["time_delta"]),
     }
 
 @router.post(
@@ -115,10 +113,10 @@ async def predict_transaction(transaction_id: str):
 
     sender_id = transaction_data["sender"]
 
-    features = get_ml_feature_vector(
-        transaction_id,
-        sender_id
-    )
+    try:
+        features = get_ml_feature_vector(transaction_id, sender_id)
+    except ModelUnavailable as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
 
     if features is None:
         raise HTTPException(
@@ -126,7 +124,12 @@ async def predict_transaction(transaction_id: str):
             detail="Features not found"
         )
 
-    prediction = predict_fraud(features)
+    try:
+        prediction = predict_fraud(features)
+    except ModelUnavailable as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
     if prediction["prediction"] == 1:
         await send_fraud_alert(
             transaction_id,

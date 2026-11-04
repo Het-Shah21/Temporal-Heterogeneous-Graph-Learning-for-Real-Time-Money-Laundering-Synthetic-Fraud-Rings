@@ -1,4 +1,5 @@
 from backend.app.services.feature_service import build_transaction_features
+from backend.app.services.ml_contract import FEATURE_NAMES
 
 
 def get_ml_feature_vector(transaction_id, sender_id):
@@ -10,12 +11,4 @@ def get_ml_feature_vector(transaction_id, sender_id):
     if features is None:
         return None
 
-    return [
-        features["amount"],
-        features["has_sender"],
-        features["has_receiver"],
-        features["sender_transaction_count"],
-        features["total_amount_sent"],
-        features["unique_receiver_count"],
-        features["recent_transaction_count"]
-    ]
+    return [features[name] for name in FEATURE_NAMES]

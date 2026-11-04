@@ -247,12 +247,12 @@ def test_transaction_features_success(monkeypatch):
 
     fake_features = {
         "amount": "5000",
-        "has_sender": "1",
-        "has_receiver": "1",
-        "sender_transaction_count": "3",
-        "total_amount_sent": "15000",
-        "unique_receiver_count": "2",
-        "recent_transaction_count": "2"
+        "hour_of_day": "10",
+        "s_out_degree": "3",
+        "s_total_sent": "15000",
+        "r_in_degree": "2",
+        "r_total_received": "12000",
+        "time_delta": "60"
     }
 
     class FakeRedis:
@@ -277,12 +277,12 @@ def test_transaction_features_success(monkeypatch):
     data = response.json()
 
     assert data["amount"] == 5000
-    assert data["has_sender"] == 1
-    assert data["has_receiver"] == 1
-    assert data["sender_transaction_count"] == 3
-    assert data["total_amount_sent"] == 15000
-    assert data["unique_receiver_count"] == 2
-    assert data["recent_transaction_count"] == 2
+    assert data["hour_of_day"] == 10
+    assert data["s_out_degree"] == 3
+    assert data["s_total_sent"] == 15000
+    assert data["r_in_degree"] == 2
+    assert data["r_total_received"] == 12000
+    assert data["time_delta"] == 60
 
 def test_process_transaction_success(monkeypatch):
     from backend.app.services import transaction_consumer
@@ -314,12 +314,12 @@ def test_process_transaction_success(monkeypatch):
         "build_transaction_features",
         lambda transaction_id, sender_id: {
             "amount": 5000,
-            "has_sender": 1,
-            "has_receiver": 1,
-            "sender_transaction_count": 1,
-            "total_amount_sent": 5000,
-            "unique_receiver_count": 1,
-            "recent_transaction_count": 1
+            "hour_of_day": 10,
+            "s_out_degree": 1,
+            "s_total_sent": 5000,
+            "r_in_degree": 1,
+            "r_total_received": 5000,
+            "time_delta": 0
         }
     )
 
@@ -760,3 +760,34 @@ def test_create_transaction_redis_unavailable(monkeypatch):
 
     assert response.status_code == 503
     assert publish_calls == []
+
+
+def test_baseline_feature_contract_order():
+    from backend.app.services.ml_contract import FEATURE_NAMES
+
+    assert FEATURE_NAMES == [
+        "amount",
+        "hour_of_day",
+        "s_out_degree",
+        "s_total_sent",
+        "r_in_degree",
+        "r_total_received",
+        "time_delta",
+    ]
+
+
+def test_missing_xgboost_artifact_is_unavailable(monkeypatch, tmp_path):
+    from backend.app.services import prediction_service
+
+    monkeypatch.setattr(prediction_service, "model", None)
+    monkeypatch.setattr(
+        prediction_service,
+        "MODEL_PATH",
+        tmp_path / "missing-baseline_xgboost.json",
+    )
+
+    try:
+        prediction_service.predict_fraud([1, 2, 3, 4, 5, 6, 7])
+        assert False, "Expected missing artifact to be reported"
+    except prediction_service.ModelUnavailable:
+        pass

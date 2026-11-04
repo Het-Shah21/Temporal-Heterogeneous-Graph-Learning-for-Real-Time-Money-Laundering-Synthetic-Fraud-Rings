@@ -6,27 +6,35 @@ from backend.app.services.redis_service import redis_client
 from backend.app.services.feature_service import build_transaction_features
 from backend.app.services.feature_service import save_features_to_redis
 import os
+import logging
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 from backend.app.services.redpanda_service import publish_to_dlq
-
-MAX_RETRIES = 3
+from backend.app.services.ml_contract import ArtifactUnavailable
+from backend.app.services.transaction_schema import normalize_transaction
 
 load_dotenv()
 
-consumer = KafkaConsumer(
-    "transactions",
-    bootstrap_servers=os.getenv(
-        "REDPANDA_BROKER",
-        "localhost:9092"
-    ),
-    auto_offset_reset="earliest",
-    enable_auto_commit=False,
-    group_id=os.getenv(
-        "REDPANDA_GROUP_ID",
-        "fraud-backend"
-    ),
-    value_deserializer=lambda value: json.loads(value.decode("utf-8"))
-)
+MAX_RETRIES = int(os.getenv("MAX_TRANSACTION_RETRIES", "3"))
+TRANSACTION_TOPIC = "transactions"
+DLQ_TOPIC = "fraud_transactions_dlq"
+logger = logging.getLogger(__name__)
+
+consumer = None
+
+
+def get_consumer():
+    global consumer
+    if consumer is None:
+        consumer = KafkaConsumer(
+            TRANSACTION_TOPIC,
+            bootstrap_servers=os.getenv("REDPANDA_BROKER", "localhost:9092"),
+            auto_offset_reset="earliest",
+            enable_auto_commit=False,
+            group_id=os.getenv("REDPANDA_GROUP_ID", "fraud-backend"),
+            value_deserializer=lambda value: json.loads(value.decode("utf-8")),
+        )
+    return consumer
 
 
 def save_transaction(transaction):
@@ -68,35 +76,43 @@ def save_transaction_to_redis(transaction):
     redis_client.expire(key, 3600)
 
 def process_transaction(transaction):
-    print("Received transaction:")
-    print(transaction)
+    normalized = normalize_transaction(transaction)
+    if isinstance(transaction, dict):
+        transaction.clear()
+        transaction.update(normalized)
+    transaction = normalized
+    logger.info("Processing transaction %s", transaction.get("transaction_id"))
 
     save_transaction(transaction)
-    print("Transaction saved to Memgraph!")
 
     save_transaction_to_redis(transaction)
-    print("Transaction saved to Redis!")
 
-    features = build_transaction_features(
-        transaction["transaction_id"],
-        transaction["sender"]
-    )
+    try:
+        features = build_transaction_features(
+            transaction["transaction_id"],
+            transaction["sender"]
+        )
+        if features is not None:
+            save_features_to_redis(
+                transaction["transaction_id"],
+                features
+            )
+    except ArtifactUnavailable as error:
+        # Storage is independent of ML artifacts. Keep the transaction
+        # durable and committed; prediction will report 503 until artifacts
+        # are installed rather than sending valid transactions to the DLQ.
+        logger.warning(
+            "Features unavailable for %s: %s",
+            transaction.get("transaction_id"),
+            error,
+        )
 
-    print("Extracted features:")
-    print(features)
-
-    save_features_to_redis(
-        transaction["transaction_id"],
-        features
-    )
-
-    print("Features saved to Redis!")
 
 
 def consume_transactions():
-    print("Transaction consumer started...")
-
-    for message in consumer:
+    active_consumer = get_consumer()
+    try:
+      for message in active_consumer:
         transaction = message.value
 
         for attempt in range(1, MAX_RETRIES + 1):
@@ -104,7 +120,7 @@ def consume_transactions():
                 process_transaction(transaction)
 
                 # Commit only this partition's successfully processed offset.
-                consumer.commit(
+                active_consumer.commit(
                     offsets={
                         TopicPartition(
                             message.topic,
@@ -116,23 +132,14 @@ def consume_transactions():
                     }
                 )
 
-                print(
-                    f"Transaction processed successfully. "
-                    f"Offset {message.offset} committed."
-                )
                 break
 
             except Exception as error:
-                print(
-                    f"Error processing transaction "
-                    f"(attempt {attempt}/{MAX_RETRIES}): {error}"
-                )
+                transaction_id = transaction.get("transaction_id") if isinstance(transaction, dict) else "unknown"
+                logger.warning("Transaction %s failed (attempt %s/%s): %s", transaction_id, attempt, MAX_RETRIES, error)
 
                 if attempt < MAX_RETRIES:
-                    print("Retrying the same transaction...")
                     continue
-
-                print("Maximum retries reached. Sending to DLQ...")
 
                 try:
                     dlq_success = publish_to_dlq(
@@ -140,13 +147,11 @@ def consume_transactions():
                         str(error)
                     )
                 except Exception as dlq_error:
-                    print(f"DLQ publishing failed: {dlq_error}")
+                    logger.error("DLQ publishing failed: %s", dlq_error)
                     dlq_success = False
 
                 if dlq_success:
-                    print("Failed transaction sent to DLQ.")
-
-                    consumer.commit(
+                    active_consumer.commit(
                         offsets={
                             TopicPartition(
                                 message.topic,
@@ -158,12 +163,15 @@ def consume_transactions():
                         }
                     )
 
-                    print("Failed transaction offset committed.")
                 else:
-                    print(
-                        "DLQ publishing failed. "
-                        "Offset will not be committed."
-                    )
-                    # Stop consuming so later messages cannot be
-                    # committed past this failed message.
                     return
+    finally:
+      close = getattr(active_consumer, "close", None)
+      if close:
+          close()
+      globals()["consumer"] = None
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    consume_transactions()

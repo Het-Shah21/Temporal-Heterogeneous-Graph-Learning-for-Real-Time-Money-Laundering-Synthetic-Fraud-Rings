@@ -19,3 +19,9 @@ def check_memgraph():
     with driver.session() as session:
         result = session.run("RETURN 1 AS test")
         return result.single()["test"]
+
+
+def close_memgraph():
+    close = getattr(driver, "close", None)
+    if close:
+        close()

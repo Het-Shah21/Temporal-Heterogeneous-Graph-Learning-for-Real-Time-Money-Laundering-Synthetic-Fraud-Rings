@@ -1,6 +1,8 @@
+from datetime import datetime, timezone
+
+from backend.app.services.ml_contract import FEATURE_NAMES, load_scaler
 from backend.app.services.redis_service import redis_client
 from backend.app.services.memgraph_service import driver
-from datetime import datetime, timezone, timedelta
 
 
 def get_transaction_features(transaction_id):
@@ -11,63 +13,85 @@ def get_transaction_features(transaction_id):
 
     return {
         "amount": float(data["amount"]),
-        "has_sender": 1,
-        "has_receiver": 1
+        "timestamp": data["timestamp"],
+        "sender": data["sender"],
+        "receiver": data["receiver"],
     }
 
 
 
-def build_transaction_features(transaction_id, sender_id):
-    transaction_features = get_transaction_features(transaction_id)
+def _parse_timestamp(value):
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
 
-    if transaction_features is None:
+
+def build_transaction_features(transaction_id, sender_id):
+    transaction = get_transaction_features(transaction_id)
+
+    if transaction is None:
         return None
 
-    cutoff_time = (
-        datetime.now(timezone.utc) - timedelta(minutes=10)
-    ).isoformat()
+    transaction_time = _parse_timestamp(transaction["timestamp"])
+    current_timestamp = transaction_time.isoformat()
 
     with driver.session() as session:
-        result = session.run(
+        sender_result = session.run(
             """
-            MATCH (sender:User {id: $sender_id})-[r:SENT]->(receiver:User)
+            MATCH (sender:User {id: $sender_id})-[r:SENT]->()
             WHERE r.transaction_id <> $transaction_id
+              AND datetime(r.timestamp) < datetime($current_timestamp)
 
             RETURN
-                count(r) AS sender_transaction_count,
-                coalesce(sum(r.amount), 0) AS total_amount_sent,
-                count(DISTINCT receiver) AS unique_receiver_count,
-                sum(
-                    CASE
-                        WHEN datetime(r.timestamp) >= datetime($cutoff_time)
-                        THEN 1
-                        ELSE 0
-                    END
-                ) AS recent_transaction_count
+                count(r) AS out_degree,
+                coalesce(sum(r.amount), 0) AS total_sent,
+                max(datetime(r.timestamp)) AS last_sent_at
             """,
             sender_id=sender_id,
             transaction_id=transaction_id,
-            cutoff_time=cutoff_time
+            current_timestamp=current_timestamp,
         )
+        sender_record = sender_result.single()
 
-        record = result.single()
+        receiver_result = session.run(
+            """
+            MATCH ()-[r:SENT]->(receiver:User {id: $receiver_id})
+            WHERE r.transaction_id <> $transaction_id
+              AND datetime(r.timestamp) < datetime($current_timestamp)
+            RETURN
+                count(r) AS in_degree,
+                coalesce(sum(r.amount), 0) AS total_received
+            """,
+            receiver_id=transaction["receiver"],
+            transaction_id=transaction_id,
+            current_timestamp=current_timestamp,
+        )
+        receiver_record = receiver_result.single()
 
-        if record is None:
-            transaction_features.update({
-                "sender_transaction_count": 0,
-                "total_amount_sent": 0.0,
-                "unique_receiver_count": 0,
-                "recent_transaction_count": 0
-            })
-        else:
-            transaction_features.update({
-                "sender_transaction_count": record["sender_transaction_count"],
-                "total_amount_sent": float(record["total_amount_sent"]),
-                "unique_receiver_count": record["unique_receiver_count"],
-                "recent_transaction_count": record["recent_transaction_count"] or 0
-            })
+    out_degree = int(sender_record["out_degree"] if sender_record else 0)
+    total_sent = float(sender_record["total_sent"] if sender_record else 0.0)
+    in_degree = int(receiver_record["in_degree"] if receiver_record else 0)
+    total_received = float(receiver_record["total_received"] if receiver_record else 0.0)
+    last_sent_at = sender_record["last_sent_at"] if sender_record else None
+    if last_sent_at is None:
+        time_delta = 0.0
+    else:
+        time_delta = max(0.0, (transaction_time - _parse_timestamp(str(last_sent_at))).total_seconds())
 
-    return transaction_features
+    scaler = load_scaler()
+    scaled_amount, scaled_time_delta = scaler.transform(
+        [[transaction["amount"], time_delta]]
+    )[0]
+    return {
+        "amount": float(scaled_amount),
+        "hour_of_day": transaction_time.hour,
+        "s_out_degree": out_degree,
+        "s_total_sent": total_sent,
+        "r_in_degree": in_degree,
+        "r_total_received": total_received,
+        "time_delta": float(scaled_time_delta),
+    }
 
 
 

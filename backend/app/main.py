@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from pydantic import BaseModel
 from backend.app.routes.transactions import router as transaction_router
@@ -6,16 +7,29 @@ from backend.app.routes.websocket import router as websocket_router
 class ServiceHealth(BaseModel):
     redis: bool
     memgraph: bool
+    redpanda: bool
 
 
 class HealthResponse(BaseModel):
     status: str
     services: ServiceHealth
 
+@asynccontextmanager
+async def lifespan(_app):
+    yield
+    from backend.app.services.redpanda_service import close_producer
+    from backend.app.services.redis_service import close_redis
+    from backend.app.services.memgraph_service import close_memgraph
+    close_producer()
+    close_redis()
+    close_memgraph()
+
+
 app = FastAPI(
     title="Fraud Detection API",
     description="Real-time fraud detection backend",
-    version="0.1.0"
+    version="0.1.0",
+    lifespan=lifespan,
 )
 
 app.include_router(transaction_router)
@@ -31,12 +45,19 @@ def root():
 def health():
     from backend.app.services.redis_service import check_redis
     from backend.app.services.memgraph_service import check_memgraph
+    from backend.app.services.redpanda_service import check_redpanda
 
     redis_status = False
     memgraph_status = False
+    redpanda_status = False
 
     try:
         redis_status = check_redis()
+    except Exception:
+        pass
+
+    try:
+        redpanda_status = check_redpanda()
     except Exception:
         pass
 
@@ -47,7 +68,7 @@ def health():
 
     overall_status = (
         "healthy"
-        if redis_status and memgraph_status
+        if redis_status and memgraph_status and redpanda_status
         else "degraded"
     )
 
@@ -55,6 +76,7 @@ def health():
         "status": overall_status,
         "services": {
             "redis": redis_status,
-            "memgraph": memgraph_status
+            "memgraph": memgraph_status,
+            "redpanda": redpanda_status,
         }
     }
