@@ -1,74 +1,81 @@
 import { NextRequest, NextResponse } from "next/server";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { spawn } from "node:child_process";
 import path from "node:path";
-import { simulateMLInference } from "@/lib/ml-simulator";
-import { FraudPredictionResult } from "@/types/fraud";
 
-const execFileAsync = promisify(execFile);
+function runPythonInference(payload: Record<string, unknown>): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const scriptPath = path.resolve(process.cwd(), "..", "ml", "predict_service.py");
+    const py = spawn("python", [scriptPath]);
+
+    let stdoutData = "";
+    let stderrData = "";
+
+    py.stdout.on("data", (data) => {
+      stdoutData += data.toString();
+    });
+
+    py.stderr.on("data", (data) => {
+      stderrData += data.toString();
+    });
+
+    py.on("close", (code) => {
+      if (code !== 0) {
+        return reject(new Error(`Python exit code ${code}: ${stderrData}`));
+      }
+      try {
+        const json = JSON.parse(stdoutData.trim());
+        resolve(json);
+      } catch (err) {
+        reject(new Error(`Failed to parse python output: ${stdoutData}`));
+      }
+    });
+
+    py.on("error", (err) => {
+      reject(err);
+    });
+
+    py.stdin.write(JSON.stringify(payload));
+    py.stdin.end();
+  });
+}
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { 
-      senderAccount, 
-      receiverAccount, 
-      amount, 
-      timeDeltaHours = 1.0, 
-      deviceFingerprint = "DEV_DEFAULT", 
-      ipAddress = "127.0.0.1" 
-    } = body;
 
-    if (!senderAccount || !receiverAccount || typeof amount !== "number") {
+    const timestamp = body.Timestamp || new Date().toISOString();
+    const fromBank = body.From_Bank || "010";
+    const fromAccount = String(body.From_Account || "").trim();
+    const toBank = body.To_Bank || "010";
+    const toAccount = String(body.To_Account || "").trim();
+    const amountReceived = Number(body.Amount_Received ?? 0);
+    const currency = body.Receiving_Currency || "US Dollar";
+    const paymentFormat = body.Payment_Format || "Cheque";
+
+    if (!fromAccount || !toAccount || isNaN(amountReceived)) {
       return NextResponse.json(
         { 
-          error: "Invalid payload: senderAccount, receiverAccount, and numeric amount are required." 
+          error: "From_Account, To_Account, and numeric Amount_Received are required." 
         },
         { status: 400 }
       );
     }
 
     const payload = {
-      senderAccount: String(senderAccount),
-      receiverAccount: String(receiverAccount),
-      amount: Number(amount),
-      timeDeltaHours: Number(timeDeltaHours),
-      deviceFingerprint: String(deviceFingerprint),
-      ipAddress: String(ipAddress)
+      Timestamp: timestamp,
+      From_Bank: fromBank,
+      From_Account: fromAccount,
+      To_Bank: toBank,
+      To_Account: toAccount,
+      Amount_Received: amountReceived,
+      Receiving_Currency: currency,
+      Payment_Format: paymentFormat
     };
 
-    // 1. Generate localized subgraph & XAI baseline
-    const baseResult: FraudPredictionResult = simulateMLInference(
-      payload.senderAccount,
-      payload.receiverAccount,
-      payload.amount,
-      payload.timeDeltaHours,
-      payload.deviceFingerprint,
-      payload.ipAddress
-    );
+    // Run 100% Real Python ML Inference Service via stdin
+    const mlResult = await runPythonInference(payload);
+    return NextResponse.json(mlResult, { status: 200 });
 
-    // 2. Try executing the actual Python XGBoost & Scaler model
-    try {
-      const scriptPath = path.resolve(process.cwd(), "..", "ml", "predict_service.py");
-      const { stdout } = await execFileAsync("python", [scriptPath, JSON.stringify(payload)], {
-        timeout: 4000,
-      });
-
-      if (stdout && stdout.trim().startsWith("{")) {
-        const pyResult = JSON.parse(stdout.trim());
-        baseResult.gnnFraudProbability = pyResult.gnnFraudProbability ?? baseResult.gnnFraudProbability;
-        baseResult.xgboostProbability = pyResult.xgboostProbability ?? baseResult.xgboostProbability;
-        baseResult.decision = pyResult.decision ?? baseResult.decision;
-        baseResult.inferenceLatencyMs = pyResult.inferenceLatencyMs ?? baseResult.inferenceLatencyMs;
-        if (pyResult.topologyPatternDetected) {
-          baseResult.topologyPatternDetected = pyResult.topologyPatternDetected;
-        }
-      }
-    } catch {
-      // Fallback safely to TypeScript engine if python execution is unavailable in the environment
-    }
-
-    return NextResponse.json(baseResult, { status: 200 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Inference pipeline failed";
     return NextResponse.json({ error: message }, { status: 500 });

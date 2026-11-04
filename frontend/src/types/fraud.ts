@@ -4,7 +4,7 @@ export interface GraphNode {
   id: string;
   label: string;
   type: NodeType;
-  riskScore: number; // 0 to 1
+  riskScore: number;
   metadata?: {
     country?: string;
     totalSent?: number;
@@ -25,7 +25,7 @@ export interface GraphEdge {
   type: "sends" | "uses_device" | "uses_ip";
   amount?: number;
   timestamp?: string;
-  importanceScore?: number; // 0 to 1 (from Captum XAI)
+  importanceScore?: number;
   isTargetEdge?: boolean;
   isLaunderingPattern?: boolean;
 }
@@ -36,11 +36,12 @@ export interface SubgraphData {
 }
 
 export interface XAIFactor {
-  id: string;
-  edgeIndex?: number;
-  featureName: string;
-  importanceScore: number; // 0 to 1
-  impact: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+  id?: string;
+  factor?: string;
+  featureName?: string;
+  importance?: number;
+  importanceScore?: number;
+  impact: "CRITICAL" | "HIGH" | "NORMAL" | "LOW" | "MEDIUM";
   description: string;
 }
 
@@ -53,18 +54,14 @@ export interface FraudPredictionResult {
   timeDeltaHours: number;
   deviceFingerprint: string;
   ipAddress: string;
-  
-  // Model Metrics
   gnnFraudProbability: number;
   xgboostProbability: number;
   optimalThreshold: number;
-  decision: "APPROVED" | "FLAGGED_REVIEW" | "BLOCKED";
+  decision: "APPROVED" | "FLAGGED_REVIEW" | "BLOCKED" | "ALERT" | "NORMAL";
   inferenceLatencyMs: number;
-  
-  // Explainability
   xaiFactors: XAIFactor[];
   subgraph: SubgraphData;
-  topologyPatternDetected?: "Circular Laundering Loop" | "Smurfing / Structuring Star" | "Shared Hardware Farm" | "Standard Linear Transfer";
+  topologyPatternDetected?: string;
 }
 
 export interface TransactionSummaryKPI {
@@ -89,4 +86,43 @@ export interface PredefinedScenario {
   deviceFingerprint: string;
   ipAddress: string;
   expectedPattern: string;
+}
+
+export interface IBMAMLTransaction {
+  Timestamp: string;
+  From_Bank: string;
+  From_Account: string;
+  To_Bank: string;
+  To_Account: string;
+  Amount_Received: number;
+  Receiving_Currency: string;
+  Payment_Format: string;
+}
+
+export interface MLPredictionResponse {
+  status: "SUCCESS" | "ERROR";
+  decision: "ALERT" | "NORMAL";
+  isAlert: boolean;
+  modelRiskScore: number;
+  xgboostScore: number;
+  optimalThreshold: number;
+  primaryReason: string;
+  xaiFactors: XAIFactor[];
+  transactionParticulars: IBMAMLTransaction;
+  accountContext: {
+    senderKnownInDataset: boolean;
+    senderOutDegree: number;
+    senderTotalSent: number;
+    receiverKnownInDataset: boolean;
+    receiverInDegree: number;
+    receiverTotalReceived: number;
+  };
+}
+
+export interface DatasetPreset {
+  id: string;
+  title: string;
+  type: "ALERT_LAUNDERING" | "NORMAL_LEGITIMATE";
+  particulars: IBMAMLTransaction;
+  description: string;
 }

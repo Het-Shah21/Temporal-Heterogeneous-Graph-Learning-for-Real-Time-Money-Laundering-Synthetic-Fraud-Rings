@@ -64,7 +64,7 @@ export function XAIInspector({ prediction }: XAIInspectorProps) {
 
         <div className="space-y-3">
           {prediction.xaiFactors.map((factor) => {
-            const pct = Math.round(factor.importanceScore * 100);
+            const pct = Math.round((factor.importanceScore ?? factor.importance ?? 0) * 100);
             return (
               <div key={factor.id} className="space-y-1">
                 <div className="flex items-center justify-between text-xs">
