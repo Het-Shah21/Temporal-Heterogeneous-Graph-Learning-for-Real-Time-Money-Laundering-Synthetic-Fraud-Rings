@@ -7,6 +7,7 @@ from backend.app.services.ml_service import get_ml_feature_vector
 from backend.app.services.prediction_service import predict_fraud, ModelUnavailable
 from backend.app.services.alert_service import send_fraud_alert
 from backend.app.services.transaction_schema import normalize_transaction
+from backend.app.services.transaction_schema import TransactionValidationError
 
 router = APIRouter(prefix="/transactions", tags=["Transactions"])
 
@@ -84,15 +85,18 @@ def get_transaction_features_api(transaction_id: str):
             detail="Features not found"
         )
 
-    return {
-        "amount": float(data["amount"]),
-        "hour_of_day": int(data["hour_of_day"]),
-        "s_out_degree": int(data["s_out_degree"]),
-        "s_total_sent": float(data["s_total_sent"]),
-        "r_in_degree": int(data["r_in_degree"]),
-        "r_total_received": float(data["r_total_received"]),
-        "time_delta": float(data["time_delta"]),
-    }
+    try:
+        return {
+            "amount": float(data["amount"]),
+            "hour_of_day": int(data["hour_of_day"]),
+            "s_out_degree": int(data["s_out_degree"]),
+            "s_total_sent": float(data["s_total_sent"]),
+            "r_in_degree": int(data["r_in_degree"]),
+            "r_total_received": float(data["r_total_received"]),
+            "time_delta": float(data["time_delta"]),
+        }
+    except (KeyError, TypeError, ValueError) as error:
+        raise HTTPException(status_code=503, detail="Stored feature data is invalid") from error
 
 @router.post(
     "/{transaction_id}/predict",
@@ -117,6 +121,8 @@ async def predict_transaction(transaction_id: str):
         features = get_ml_feature_vector(transaction_id, sender_id)
     except ModelUnavailable as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
+    except TransactionValidationError as error:
+        raise HTTPException(status_code=503, detail="Stored transaction data is invalid") from error
 
     if features is None:
         raise HTTPException(

@@ -22,8 +22,11 @@ def run_replay(max_messages=100):
     try:
         for message in consumer:
             envelope = message.value
+            if not isinstance(envelope, dict):
+                logger.error("DLQ message %s is not an object", message.offset)
+                return processed
             transaction = envelope.get("transaction")
-            if not transaction:
+            if not isinstance(transaction, dict) or not transaction:
                 logger.error("DLQ message %s has no transaction", message.offset)
                 return processed
             process_transaction(transaction)

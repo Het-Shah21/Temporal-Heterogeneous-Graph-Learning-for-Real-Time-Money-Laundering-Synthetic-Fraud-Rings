@@ -1,8 +1,9 @@
 from datetime import datetime, timezone
 
-from backend.app.services.ml_contract import FEATURE_NAMES, load_scaler
+from backend.app.services.ml_contract import load_scaler
 from backend.app.services.redis_service import redis_client
 from backend.app.services.memgraph_service import driver
+from backend.app.services.transaction_schema import normalize_transaction
 
 
 def get_transaction_features(transaction_id):
@@ -11,12 +12,9 @@ def get_transaction_features(transaction_id):
     if not data:
         return None
 
-    return {
-        "amount": float(data["amount"]),
-        "timestamp": data["timestamp"],
-        "sender": data["sender"],
-        "receiver": data["receiver"],
-    }
+    stored = dict(data)
+    stored.setdefault("transaction_id", transaction_id)
+    return normalize_transaction(stored)
 
 
 
